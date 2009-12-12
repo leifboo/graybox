@@ -1,0 +1,89 @@
+Directory 'Janus:Users:Leif:from April Fool:leif:Projects:TrafficLight:'
+DumpPef -ldr i 'Classic Toolbox Debug'
+File: Classic Toolbox Debug
+
+     Container [1] (Classic Toolbox Debug) [In data fork (Offset 0x0, Length 0x2462/9314)]
+
+     =========================================================
+
+     Loader section 2 (<unnamed>)
+
+     ------ Loader Import Symbol Table ------
+          Importing from "InterfaceLib ; oldImpVersion 0x00000000 (0), currentVersion 0x00000000 (0)"
+00D0 [ 0] 02 00000D   TVector  GetApplLimit
+00D4 [ 1] 02 00001A   TVector  NGetTrapAddress
+00D8 [ 2] 02 00002A   TVector  DragWindow
+00DC [ 3] 02 000035   TVector  DisposeHandle
+00E0 [ 4] 02 000043   TVector  DisableItem
+00E4 [ 5] 02 00004F   TVector  SetRectRgn
+00E8 [ 6] 02 00005A   TVector  InitGraf
+00EC [ 7] 02 000063   TVector  CloseWindow
+00F0 [ 8] 02 00006F   TVector  EndUpdate
+00F4 [ 9] 02 000079   TVector  MaxApplZone
+00F8 [10] 02 000085   TVector  BeginUpdate
+00FC [11] 02 000091   TVector  SystemClick
+0100 [12] 02 00009D   TVector  DrawMenuBar
+0104 [13] 02 0000A9   TVector  InitFonts
+0108 [14] 02 0000B3   TVector  FindWindow
+010C [15] 02 0000BE   TVector  MenuSelect
+0110 [16] 02 0000C9   TVector  InvalRect
+0114 [17] 02 0000D3   TVector  EventAvail
+0118 [18] 02 0000DE   TVector  WaitNextEvent
+011C [19] 02 0000EC   TVector  TrackBox
+0120 [20] 02 0000F5   TVector  TEInit
+0124 [21] 02 0000FC   TVector  ApplicationZone
+0128 [22] 02 00010C   TVector  ZoomWindow
+012C [23] 02 000117   TVector  InitDialogs
+0130 [24] 02 000123   TVector  SetOrigin
+0134 [25] 02 00012D   TVector  AppendResMenu
+0138 [26] 02 00013B   TVector  GetMenuItemText
+013C [27] 02 00014B   TVector  InitMenus
+0140 [28] 02 000155   TVector  GetMenuHandle
+0144 [29] 02 000163   TVector  EmptyRgn
+0148 [30] 02 00016C   TVector  MenuKey
+014C [31] 02 000174   TVector  NewRgn
+0150 [32] 02 00017B   TVector  GetNextEvent
+0154 [33] 02 000188   TVector  InitWindows
+0158 [34] 02 000194   TVector  FrontWindow
+015C [35] 02 0001A0   TVector  NewPtr
+0160 [36] 02 0001A7   TVector  Alert
+0164 [37] 02 0001AD   TVector  SetPort
+0168 [38] 02 0001B5   TVector  PtInRgn
+016C [39] 02 0001BD   TVector  FrameOval
+0170 [40] 02 0001C7   TVector  DiffRgn
+0174 [41] 02 0001CF   TVector  CheckItem
+0178 [42] 02 0001D9   TVector  SystemTask
+017C [43] 02 0001E4   TVector  InitCursor
+0180 [44] 02 0001EF   TVector  SysEnvirons
+0184 [45] 02 0001FB   TVector  ForeColor
+0188 [46] 02 000205   TVector  Gestalt
+018C [47] 02 00020D   TVector  SetMenuBar
+0190 [48] 02 000218   TVector  ExitToShell
+0194 [49] 02 000224   TVector  GetNewWindow
+0198 [50] 02 000231   TVector  DIBadMount
+019C [51] 02 00023C   TVector  OSEventAvail
+01A0 [52] 02 000249   TVector  EraseRect
+01A4 [53] 02 000253   TVector  PurgeSpace
+01A8 [54] 02 00025E   TVector  CopyRgn
+01AC [55] 02 000266   TVector  EnableItem
+01B0 [56] 02 000271   TVector  SectRgn
+01B4 [57] 02 000279   TVector  SystemEdit
+01B8 [58] 02 000284   TVector  SetPt
+01BC [59] 02 00028A   TVector  OpenDeskAcc
+01C0 [60] 02 000296   TVector  HiliteMenu
+01C4 [61] 02 0002A1   TVector  RectRgn
+01C8 [62] 02 0002A9   TVector  GetResource
+01CC [63] 02 0002B5   TVector  GetNewMBar
+01D0 [64] 02 0002C0   TVector  NewPtrClear
+01D4 [65] 02 0002CC   TVector  SelectWindow
+01D8 [66] 02 0002D9   TVector  GetCursor
+01DC [67] 02 0002E3   TVector  DisposeRgn
+01E0 [68] 02 0002EE   TVector  PaintOval
+01E4 [69] 02 0002F8   TVector  SetCursor
+01E8 [70] 02 000302   TVector  CloseDeskAcc
+
+0524 There are 12 (pad?) bytes at the end of this section.
+
+DumpPEF complete - no errors reported.
+
+

@@ -1,0 +1,6 @@
+
+#pragma once on
+
+#pragma precompile_target "C14MacHeadersPPC"
+
+#include "C14MacHeaders.c"
