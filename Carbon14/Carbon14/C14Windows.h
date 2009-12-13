@@ -42,6 +42,17 @@ C14GetNewWindow(
 C14_API( void )
 C14InvalRect(const Rect * badRect);
 
+C14_API( WindowRef )
+C14NewCWindow(
+  void *             wStorage,
+  const Rect *       boundsRect,
+  ConstStr255Param   title,
+  Boolean            visible,
+  short              procID,
+  WindowRef          behind,
+  Boolean            goAwayFlag,
+  long               refCon);
+
 
 /* private routines */
 

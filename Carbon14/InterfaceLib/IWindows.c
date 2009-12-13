@@ -71,3 +71,25 @@ InvalRect(const Rect * badRect)
 {
     C14InvalRect(badRect);
 }
+
+
+DEFINE_API( WindowRef )
+NewCWindow(
+  void *             wStorage,
+  const Rect *       boundsRect,
+  ConstStr255Param   title,
+  Boolean            visible,
+  short              procID,
+  WindowRef          behind,
+  Boolean            goAwayFlag,
+  long               refCon)
+{
+    return C14NewCWindow(wStorage,
+                         boundsRect,
+                         title,
+                         visible,
+                         procID,
+                         behind,
+                         goAwayFlag,
+                         refCon);
+}
