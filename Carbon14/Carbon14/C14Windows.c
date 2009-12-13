@@ -28,7 +28,11 @@ C14CloseWindow(WindowPtr window)
     (*c14Port)->carbonPort = nil; /* destroyed by DisposeWindow() */
     (*c14Port)->carbonWindow = nil;
     
-    C14PrivateClosePort((CGrafPtr)window);
+    if ((*c14Port)->isColor) {
+        C14PrivateCloseCPort((CGrafPtr)window);
+    } else {
+        C14PrivateClosePort(window);
+    }
 
     classicWindow = (WindowPeek)window;    
     DisposeHandle((Handle)classicWindow->titleHandle);
@@ -59,6 +63,7 @@ C14DragWindow(
     
     c14Port = C14PrivateFindClassicPort(classicWindow);
     DragWindow((**c14Port).carbonWindow, startPt, boundsRect);
+    C14PrivateSyncWindowPosition(*c14Port);
 }
 
 
@@ -204,7 +209,8 @@ C14GetNewWindow(
     titleRgn = nil;
     
     carbonPort = GetWindowPort(carbonWindow);
-    C14PrivateSyncPort((CGrafPtr)&classicWindow->port, carbonPort, TRUE);
+    C14PrivateSyncPort(&classicWindow->port, carbonPort, TRUE);
+    
     classicWindow->windowKind = GetWindowKind(carbonWindow);
     classicWindow->visible = IsWindowVisible(carbonWindow);
     classicWindow->hilited = IsWindowHilited(carbonWindow);
@@ -225,10 +231,12 @@ C14GetNewWindow(
     
     /* C14SyncClassicWindow end */
     
-    c14Port = C14PrivateNewPort();
+    c14Port = C14PrivateNewPort(FALSE);
     c14Port->classicPort = &classicWindow->port;
     c14Port->carbonPort = carbonPort;
     c14Port->carbonWindow = carbonWindow;
+    
+    C14PrivateSyncWindowPosition(c14Port);
     
     return c14Port->classicPort;
     
@@ -263,4 +271,35 @@ DEFINE_API( void )
 C14InvalRect(const Rect * badRect)
 {
     InvalWindowRect(theC14Port->carbonWindow, badRect);
+}
+
+
+
+/*
+ * private routines
+ */
+
+void
+C14PrivateSyncWindowPosition(C14PortPtr c14Port)
+{
+    BitMap *portBits;
+    Rect windowBounds;
+    C14RgnHandle visRgn;
+    
+    if (!c14Port->isColor) {
+        /* Window PixMaps appear to refer to buffers, rather than the screen.
+           Construct the rectangle classic apps expect. */
+        portBits = &c14Port->classicPort->portBits;
+        GetQDGlobalsScreenBits(portBits);
+        GetWindowBounds(c14Port->carbonWindow,
+                        kWindowGlobalPortRgn,
+                        &windowBounds);
+        OffsetRect(&portBits->bounds,
+                   -windowBounds.left,
+                   -windowBounds.top);
+    }
+    
+    visRgn = (C14RgnHandle)c14Port->classicPort->visRgn;
+    GetPortVisibleRegion(c14Port->carbonPort, (**visRgn).carbonRgn);
+    C14PrivateSyncRgn(visRgn);
 }

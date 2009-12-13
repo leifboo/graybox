@@ -33,6 +33,34 @@ C14InitGraf(void * globalPtr)
 
 
 DEFINE_API( void )
+C14SetOrigin(
+  short   h,
+  short   v)
+{
+    GrafPtr port;
+    Rect *portRect;
+    short dh, dv;
+    C14RgnHandle visRgn;
+    
+    SetOrigin(h, v);
+    
+    port = theC14Port->classicPort;
+    portRect = &port->portRect;
+    dh = h - portRect->left;
+    dv = v - portRect->top;
+    
+    OffsetRect(portRect, dh, dv);
+    if (!theC14Port->isColor) {
+        OffsetRect(&port->portBits.bounds, dh, dv);
+    }
+    
+    visRgn = (C14RgnHandle)theC14Port->classicPort->visRgn;
+    GetPortVisibleRegion(theC14Port->carbonPort, (**visRgn).carbonRgn);
+    C14PrivateSyncRgn(visRgn);
+}
+
+
+DEFINE_API( void )
 C14SetPort(GrafPtr classicPort)
 {
     theC14Port = *C14PrivateFindClassicPort(classicPort);
@@ -159,11 +187,19 @@ C14SetRectRgn(
  */
 
 void
-C14PrivateClosePort(CGrafPtr classicPort)
+C14PrivateCloseCPort(CGrafPtr classicPort)
 {
     DisposePixPat(classicPort->fillPixPat);
     DisposePixPat(classicPort->pnPixPat);
     DisposePixPat(classicPort->bkPixPat);
+    C14DisposeRgn((C14RgnHandle)classicPort->clipRgn);
+    C14DisposeRgn((C14RgnHandle)classicPort->visRgn);
+}
+
+
+void
+C14PrivateClosePort(GrafPtr classicPort)
+{
     C14DisposeRgn((C14RgnHandle)classicPort->clipRgn);
     C14DisposeRgn((C14RgnHandle)classicPort->visRgn);
 }
@@ -198,12 +234,13 @@ C14PrivateFindClassicPort(GrafPtr classicPort)
 
 
 C14PortPtr
-C14PrivateNewPort(void)
+C14PrivateNewPort(Boolean isColor)
 {
     C14PortPtr newC14Port;
     
     newC14Port = (C14PortPtr)NewPtr(sizeof(C14Port));
     newC14Port->next = c14PortHead;
+    newC14Port->isColor = isColor;
     newC14Port->classicPort = nil;
     newC14Port->carbonPort = nil;
     newC14Port->carbonWindow = nil;
@@ -215,7 +252,7 @@ C14PrivateNewPort(void)
 
 
 void
-C14PrivateSyncPort(CGrafPtr classicPort, CGrafPtr carbonPort, Boolean init)
+C14PrivateSyncCPort(CGrafPtr classicPort, CGrafPtr carbonPort, Boolean init)
 {
     C14RgnHandle visRgn, clipRgn;
     C14RgnHandle newVisRgn, newClipRgn;
@@ -270,7 +307,8 @@ C14PrivateSyncPort(CGrafPtr classicPort, CGrafPtr carbonPort, Boolean init)
     classicPort->pnVis = GetPortPenVisibility(carbonPort);
     classicPort->txFont = GetPortTextFont(carbonPort);
     classicPort->txFace = GetPortTextFace(carbonPort);
-    classicPort->txSize = GetPortTextMode(carbonPort);
+    classicPort->txMode = GetPortTextMode(carbonPort);
+    classicPort->txSize = GetPortTextSize(carbonPort);
     classicPort->spExtra = GetPortSpExtra(carbonPort);
     classicPort->fgColor = 0; /* not available in Carbon*/
     classicPort->bkColor = 0; /* not available in Carbon*/
@@ -292,6 +330,70 @@ fail:
     if (newBackPattern) {
         DisposePixPat(newBackPattern);
     }
+    if (newClipRgn) {
+        C14DisposeRgn(newClipRgn);
+    }
+    if (newVisRgn) {
+        C14DisposeRgn(newVisRgn);
+    }
+    return;
+}
+
+
+void
+C14PrivateSyncPort(GrafPtr classicPort, CGrafPtr carbonPort, Boolean init)
+{
+    C14RgnHandle visRgn, clipRgn;
+    C14RgnHandle newVisRgn, newClipRgn;
+    Handle dummySave = &dummyPtr;
+    PixMapHandle pixMap;
+    
+    newVisRgn = newClipRgn = nil;
+    if (init) {
+        visRgn = newVisRgn = C14NewRgn();
+        clipRgn = newClipRgn = C14NewRgn();
+        if (!newVisRgn || !newClipRgn) {
+            goto fail;
+        }
+    } else {
+        visRgn = (C14RgnHandle)classicPort->visRgn;
+        clipRgn = (C14RgnHandle)classicPort->clipRgn;
+    }
+    
+    pixMap = GetPortPixMap(carbonPort);
+    
+    GetPortVisibleRegion(carbonPort, (**visRgn).carbonRgn);
+    GetPortClipRegion(carbonPort, (**clipRgn).carbonRgn);
+    
+    classicPort->device = 0; /* not available in Carbon */
+    classicPort->portBits.baseAddr = (*pixMap)->baseAddr;
+    classicPort->portBits.rowBytes = (*pixMap)->rowBytes;
+    classicPort->portBits.bounds = (*pixMap)->bounds;
+    GetPortBounds(carbonPort, &classicPort->portRect);
+    classicPort->visRgn = (RgnHandle)visRgn;
+    classicPort->clipRgn = (RgnHandle)clipRgn;
+    /* XXX: bkPat & fillPat not available in Carbon */
+    GetPortPenLocation(carbonPort, &classicPort->pnLoc);
+    GetPortPenSize(carbonPort, &classicPort->pnSize);
+    classicPort->pnMode = GetPortPenMode(carbonPort);
+    /* XXX: pnPat not available in Carbon */
+    classicPort->pnVis = GetPortPenVisibility(carbonPort);
+    classicPort->txFont = GetPortTextFont(carbonPort);
+    classicPort->txFace = GetPortTextFace(carbonPort);
+    classicPort->txMode = GetPortTextMode(carbonPort);
+    classicPort->txSize = GetPortTextSize(carbonPort);
+    classicPort->spExtra = GetPortSpExtra(carbonPort);
+    classicPort->fgColor = 0; /* not available in Carbon*/
+    classicPort->bkColor = 0; /* not available in Carbon*/
+    classicPort->colrBit = 0; /* not available in Carbon*/
+    classicPort->patStretch = 0; /* not available in Carbon*/
+    classicPort->picSave = IsPortPictureBeingDefined(carbonPort) ? dummySave : nil;
+    classicPort->rgnSave = IsPortRegionBeingDefined(carbonPort) ? dummySave : nil;
+    classicPort->polySave = IsPortPolyBeingDefined(carbonPort) ? dummySave : nil;
+    classicPort->grafProcs = nil; /* not available in Carbon*/
+    return;
+
+fail:
     if (newClipRgn) {
         C14DisposeRgn(newClipRgn);
     }

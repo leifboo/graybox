@@ -15,6 +15,7 @@ struct C14Region {
 
 struct C14Port {
     C14PortPtr next;
+    Boolean isColor;
     GrafPtr classicPort;
     CGrafPtr carbonPort;
     WindowRef carbonWindow; /* nil for non-windows */
@@ -25,6 +26,11 @@ struct C14Port {
 
 C14_API( void )
 C14InitGraf(void * globalPtr);
+
+C14_API( void )
+C14SetOrigin(
+  short   h,
+  short   v);
 
 C14_API( void )
 C14SetPort(GrafPtr port);
@@ -81,7 +87,10 @@ C14SetRectRgn(
 /* private routines */
 
 void
-C14PrivateClosePort(CGrafPtr classicPort);
+C14PrivateCloseCPort(CGrafPtr classicPort);
+
+void
+C14PrivateClosePort(GrafPtr classicPort);
 
 C14PortPtr *
 C14PrivateFindCarbonWindow(WindowRef carbonWindow);
@@ -90,10 +99,13 @@ C14PortPtr *
 C14PrivateFindClassicPort(GrafPtr classicPort);
 
 C14PortPtr
-C14PrivateNewPort(void);
+C14PrivateNewPort(Boolean isColor);
 
 void
-C14PrivateSyncPort(CGrafPtr classicPort, CGrafPtr carbonPort, Boolean init);
+C14PrivateSyncCPort(CGrafPtr classicPort, CGrafPtr carbonPort, Boolean init);
+
+void
+C14PrivateSyncPort(GrafPtr classicPort, CGrafPtr carbonPort, Boolean init);
 
 void
 C14PrivateSyncRgn(C14RgnHandle classicRgn);

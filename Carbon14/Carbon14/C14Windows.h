@@ -43,4 +43,10 @@ C14_API( void )
 C14InvalRect(const Rect * badRect);
 
 
+/* private routines */
+
+void
+C14PrivateSyncWindowPosition(C14PortPtr c14Port);
+
+
 #endif /* __C14Windows_h__ */

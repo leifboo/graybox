@@ -13,6 +13,16 @@ InitGraf(void * globalPtr)
     C14InitGraf(globalPtr);
 }
 
+
+DEFINE_API( void )
+SetOrigin(
+  short   h,
+  short   v)
+{
+    C14SetOrigin(h, v);
+}
+
+
 DEFINE_API( void )
 SetPort(GrafPtr port)
 {
