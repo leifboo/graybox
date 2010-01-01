@@ -40,6 +40,9 @@ C14GetNewWindow(
   WindowRef   behind);
 
 C14_API( void )
+C14InitWindows(void);
+
+C14_API( void )
 C14InvalRect(const Rect * badRect);
 
 C14_API( WindowRef )

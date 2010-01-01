@@ -8,6 +8,11 @@
 
 
 C14_API( Boolean )
+C14OSEventAvail(
+  EventMask      mask,
+  EventRecord *  theEvent);
+
+C14_API( Boolean )
 C14WaitNextEvent(
   EventMask      eventMask,
   EventRecord *  theEvent,

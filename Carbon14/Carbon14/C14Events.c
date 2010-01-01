@@ -5,6 +5,15 @@
 #include "C14Windows.h"
 
 
+DEFINE_API( Boolean )
+C14OSEventAvail(
+  EventMask      mask,
+  EventRecord *  theEvent)
+{
+    mask &= ~(updateMask | activMask);
+    return EventAvail(mask, theEvent);
+}
+
 
 DEFINE_API( Boolean )
 C14WaitNextEvent(

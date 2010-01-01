@@ -2,6 +2,14 @@
 #include "C14Events.h"
 
 
+DEFINE_API( Boolean )
+OSEventAvail(
+  EventMask      mask,
+  EventRecord *  theEvent)
+{
+    return C14OSEventAvail(mask, theEvent);
+}
+
 
 DEFINE_API( Boolean )
 WaitNextEvent(

@@ -37,8 +37,9 @@
 
 #include "MINEM68K.h"
 
+#include "C14Traps.h"
+
 IMPORTFUNC ui5b MM_Access(ui5b Data, blnr WriteMem, blnr ByteSize, CPTR addr);
-IMPORTPROC customreset(void);
 
 typedef unsigned char flagtype;
 
@@ -348,6 +349,11 @@ LOCALFUNC MayInline void BackupPC(void)
 #endif
 }
 
+GLOBALPROC m68k_backup_pc(void)
+{
+    BackupPC();
+}
+
 #define MakeDumpFile 0
 
 #if MakeDumpFile
@@ -372,7 +378,7 @@ LOCALPROC DumpAJump2(CPTR toaddr)
 
 #ifdef USE_POINTER
 
-LOCALFUNC MayInline void m68k_setpc(CPTR newpc)
+GLOBALFUNC MayInline void m68k_setpc(CPTR newpc)
 {
 #if MakeDumpFile
 	DumpAJump2(newpc);
@@ -383,25 +389,25 @@ LOCALFUNC MayInline void m68k_setpc(CPTR newpc)
 		Exception(5); /* try and get macsbug */
 	}
 #endif
-	pc_p = pc_oldp = get_pc_real_address(newpc);
+	pc_p = pc_oldp = (ui3p)newpc /*get_pc_real_address(newpc)*/ ;
 	regs.pc = newpc;
 }
 
-LOCALFUNC MayInline CPTR m68k_getpc(void)
+GLOBALFUNC MayInline CPTR m68k_getpc(void)
 {
 	return regs.pc + (pc_p - pc_oldp);
 }
 
 #else
 
-LOCALFUNC MayInline void m68k_setpc(CPTR newpc)
+GLOBALFUNC MayInline void m68k_setpc(CPTR newpc)
 {
 /*    regs.pc = newpc;*/
 /* bill mod*/
 	regs.pc = newpc & 0x00ffFFFF;
 }
 
-LOCALFUNC MayInline CPTR m68k_getpc(void)
+GLOBALFUNC MayInline CPTR m68k_getpc(void)
 {
 	return regs.pc;
 }
@@ -464,15 +470,11 @@ GLOBALPROC ViaException(void)
 	}
 }
 
-GLOBALPROC m68k_reset(void)
+GLOBALPROC m68k_reset(CPTR pc, ui5b sp, ui5b a5)
 {
-	customreset();
-
-/* Sets the MC68000 reset jump vector... */
-	m68k_setpc(get_long(0x00000004));
-
-/* Sets the initial stack vector... */
-	m68k_areg(7) = get_long(0x00000000);
+	m68k_setpc(pc);
+	m68k_areg(7) = sp;
+	m68k_areg(5) = a5;
 
 	regs.s = 1;
 	regs.m = 0;
@@ -489,7 +491,6 @@ GLOBALPROC MINEM68K_Init(ui3b **BankReadAddr, ui3b **BankWritAddr,
 	regs.fBankWritAddr = BankWritAddr;
 	regs.fBankReadAddr = BankReadAddr;
 	regs.fVIAInterruptRequest = fVIAInterruptRequest;
-	m68k_reset();
 }
 
 GLOBALPROC MacInterrupt(void)
@@ -1939,7 +1940,7 @@ LOCALPROCUSEDONCE DoCode4(void)
 											BackupPC();
 											Exception(8);
 										} else {
-											customreset();
+											/*customreset();*/
 										}
 										break;
 									case 1 :
@@ -2167,8 +2168,7 @@ LOCALPROCUSEDONCE DoCode9(void)
 
 LOCALPROCUSEDONCE DoCodeA(void)
 {
-	BackupPC();
-	Exception(0xA);
+    C14PrivateTrapDispatcher(opcode, regs.regs);
 }
 
 LOCALPROCUSEDONCE DoCodeB(void)

@@ -268,6 +268,13 @@ fail:
 
 
 DEFINE_API( void )
+C14InitWindows(void)
+{
+    /* no-op */
+}
+
+
+DEFINE_API( void )
 C14InvalRect(const Rect * badRect)
 {
     InvalWindowRect(theC14Port->carbonWindow, badRect);

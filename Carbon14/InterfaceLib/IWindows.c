@@ -67,6 +67,13 @@ GetNewWindow(
 
 
 DEFINE_API( void )
+InitWindows(void)
+{
+    C14InitWindows();
+}
+
+
+DEFINE_API( void )
 InvalRect(const Rect * badRect)
 {
     C14InvalRect(badRect);
