@@ -4,7 +4,7 @@
 
 
 void
-C14InitLowMem(Ptr a5);
+C14InitLowMem(Ptr a5, Ptr stackBase);
 
 UInt32
 C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr);

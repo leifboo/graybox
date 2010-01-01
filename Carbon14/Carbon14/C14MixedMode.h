@@ -33,6 +33,7 @@ enum {
     C14MM_L_V_D0,
     C14MM_L_W_A0_D0,
     C14MM_L_L_A0_D0,
+    C14MM_L_L_D0_A0,
     C14MM_L_L_D0_D0,
     
     C14MM_REGS

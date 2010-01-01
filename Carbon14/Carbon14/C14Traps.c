@@ -1340,10 +1340,10 @@ static C14RoutineDescriptor osTrap[0x100] = {
     { _MixedModeMagic }, /* DisposPtr */
     { _MixedModeMagic }, /* SetPtrSize */
     { _MixedModeMagic }, /* GetPtrSize */
-    { _MixedModeMagic }, /* NewHandle */
+    { _MixedModeMagic, C14MM_L_L_A0_D0, (ProcPtr)&NewHandle }, /* NewHandle */
     { _MixedModeMagic, C14MM_V_L_A0, (ProcPtr)&DisposeHandle }, /* DisposHandle */
     { _MixedModeMagic }, /* SetHandleSize */
-    { _MixedModeMagic }, /* GetHandleSize */
+    { _MixedModeMagic, C14MM_L_L_D0_A0, (ProcPtr)&GetHandleSize }, /* GetHandleSize */
     { _MixedModeMagic }, /* HandleZone */
     { _MixedModeMagic }, /* ReAllocHandle */
     { _MixedModeMagic }, /* RecoverHandle */
@@ -1406,12 +1406,12 @@ static C14RoutineDescriptor osTrap[0x100] = {
     { _MixedModeMagic }, /* MaxBlock */
     { _MixedModeMagic, C14MM_REGS, (ProcPtr)&C14PurgeSpaceM68K }, /* PurgeSpace */
     { _MixedModeMagic, C14MM_L_V_D0, (ProcPtr)&C14MaxApplZone }, /* MaxApplZone */
-    { _MixedModeMagic }, /* MoveHHi */
+    { _MixedModeMagic, C14MM_V_L_A0, (ProcPtr)&MoveHHi }, /* MoveHHi */
     { _MixedModeMagic }, /* StackSpace */
     { _MixedModeMagic }, /* NewEmptyHandle */
     { _MixedModeMagic }, /* HSetRBit */
     { _MixedModeMagic }, /* HClrRBit */
-    { _MixedModeMagic }, /* HGetState */
+    { _MixedModeMagic, C14MM_L_L_D0_A0, (ProcPtr)&HGetState }, /* HGetState */
     { _MixedModeMagic }, /* HSetState */
     { _MixedModeMagic }, /* SI_TestMgr */
     { _MixedModeMagic }, /* InitFs */
@@ -1495,7 +1495,7 @@ static C14RoutineDescriptor osTrap[0x100] = {
     { _MixedModeMagic }, /* jIAZInit */
     { _MixedModeMagic }, /* jIAZPostInit */
     { _MixedModeMagic }, /* jLaunchInit */
-    { _MixedModeMagic }, /* jCacheFlush */
+    { _MixedModeMagic, C14MM_V_V_DESC, (ProcPtr)&C14Unimplemented }, /* jCacheFlush */
     { _MixedModeMagic }, /* jSysUtil */
     { _MixedModeMagic }, /* jLg2Phys */
     { _MixedModeMagic }, /* jFlushCache */

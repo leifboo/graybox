@@ -132,7 +132,7 @@ C14ClassicM68KApplicationMain(void)
     /*
      * Initialize low memory & the Trap Dispatcher.
      */
-    C14InitLowMem(a5);
+    C14InitLowMem(a5, sp);
     C14InitTraps();
     
     /*

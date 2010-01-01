@@ -254,8 +254,13 @@ C14MixedModeMagic(C14RoutineDescriptor *desc, UInt32 regs[16])
         break; }
         
     case C14MM_L_L_A0_D0: {
-        L_W routine = (L_W)desc->routine;
+        L_L routine = (L_L)desc->routine;
         regs[8+0] = (*routine)(regs[0]);
+        break; }
+    
+    case C14MM_L_L_D0_A0: {
+        L_L routine = (L_L)desc->routine;
+        regs[0] = (*routine)(regs[8+0]);
         break; }
     
     case C14MM_L_L_D0_D0: {
