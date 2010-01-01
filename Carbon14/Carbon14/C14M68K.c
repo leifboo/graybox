@@ -22,6 +22,16 @@ ui5b MM_Access(ui5b data, blnr writeMem, blnr byteSize, CPTR addr) {
         return C14LowMemAccess(data, writeMem, byteSize, addr);
     }
     
+    if (addr == 0x2a000008) { /* ROM version */
+        /* XXX: allocate ROM block */
+        return 0x7D; /*various*/ /* 0x75 Mac Plus */
+    }
+    
+    if (addr == 0xdead0000) /* TopMapHndl */
+        return 0xbeef;
+    if (addr == 0xdead0002) /* TopMapHndl */
+        return 0x0000;
+    
     /* real addressing */
     if (byteSize) {
         bytePtr = (ui3b *)addr;

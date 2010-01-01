@@ -12,6 +12,9 @@ C14MaxApplZone(void);
 C14_API( void )
 C14PurgeSpaceM68K(UInt32 regs[16]);
 
+C14_API( void )
+C14SetApplLimit(void * zoneLimit);
+
 C14_API( Ptr )
 C14StripAddress(void * theAddress);
 

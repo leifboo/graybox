@@ -18,10 +18,12 @@ typedef void (*V_LWW)(L, W, W);
 typedef void (*V_LWWWW)(L, W, W, W, W);
 typedef void (*V_LL)(L, L);
 typedef void (*V_LLL)(L, L, L);
+typedef W (*W_V)(void);
 typedef W (*W_WL)(W, L);
 typedef W (*W_WLLL)(W, L, L, L);
 typedef W (*W_L)(L);
 typedef W (*W_LL)(L, L);
+typedef W (*W_LLL)(L, L, L);
 typedef L (*L_V)(void);
 typedef L (*L_W)(W);
 typedef L (*L_WLL)(W, L, L);
@@ -131,6 +133,14 @@ C14MixedModeMagic(C14RoutineDescriptor *desc, UInt32 regs[16])
         SP += 12;
         break; }
     
+    case C14MM_W_V:
+    case C14MM_B_V: {
+        W_V routine = (W_V)desc->routine;
+        sp[0] = (*routine)();
+        if (desc->flags == C14MM_B_V)
+            sp[0] <<= 8;
+        break; }
+    
     case C14MM_W_WL:
     case C14MM_B_WL: {
         W_WL routine = (W_WL)desc->routine;
@@ -174,6 +184,15 @@ C14MixedModeMagic(C14RoutineDescriptor *desc, UInt32 regs[16])
         if (desc->flags == C14MM_B_LL)
             sp[4] <<= 8;
         SP += 8;
+        break; }
+    
+    case C14MM_W_LLL: {
+        W_LLL routine = (W_LLL)desc->routine;
+        L arg0 = FetchLong(4);
+        L arg1 = FetchLong(2);
+        L arg2 = FetchLong(0);
+        sp[6] = (*routine)(arg0, arg1, arg2);
+        SP += 12;
         break; }
     
     case C14MM_L_V: {
@@ -238,9 +257,19 @@ C14MixedModeMagic(C14RoutineDescriptor *desc, UInt32 regs[16])
         (*routine)(regs[8+0], regs[0] & 0xffff);
         break; }
     
+    case C14MM_V_LLL_A0_A1_D0: {
+        V_LLL routine = (V_LLL)desc->routine;
+        (*routine)(regs[8+0], regs[8+1], regs[0]);
+        break; }
+    
     case C14MM_W_WL_D0_D0_A0: {
         W_WL routine = (W_WL)desc->routine;
         regs[0] = (*routine)(regs[0] & 0xffff, regs[8+0]);
+        break; }
+    
+    case C14MM_W_LL_D0_D0_A1: {
+        W_LL routine = (W_LL)desc->routine;
+        regs[0] = (*routine)(regs[0], regs[8+1]);
         break; }
     
     case C14MM_L_V_D0: {

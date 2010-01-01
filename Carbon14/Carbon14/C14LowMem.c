@@ -12,11 +12,18 @@ enum {
     LoadTrap        = 0x12D,
     CPUFlag         = 0x12F,
     ApplLimit       = 0x130,
+    Rom85           = 0x28E,
     ApplZone        = 0x2AA,
+    RomBase         = 0x2AE,
+    DefltStack      = 0x322,
+    CurApRefNum     = 0x900,
     CurrentA5       = 0x904,
     CurStackBase    = 0x908,
     FPFlgMode       = 0xA4A,
+    TopMapHndl      = 0xA50,
+    CurMap          = 0xA5A,
     ResLoad         = 0xA5E,
+    ResErr          = 0xA60,
     SegHiEnable     = 0xBB2
 };
 
@@ -112,6 +119,10 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
         data = 0x0000;
         break;
     
+    case Rom85: /* "-1 for old ROM , > 0 for new ROM" */
+        data = 1;
+        break;
+    
     case ApplZone: /* "application heap zone" */
     case ApplZone + 2:
         tmpLong = (UInt32)LMGetApplZone();
@@ -119,6 +130,29 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
                           data, write, byte, addr);
         if (write) {
             LMSetApplZone((THz)tmpLong);
+        }
+        break;
+    
+    case RomBase: /* "ROM FBA" */
+        /* XXX: allocate block */
+        data = 0x2a00;
+        break;
+    case RomBase + 2:
+        data = 0x0000;
+        break;
+    
+    case DefltStack: /* "default size of stack" */
+        data = 0x0001; /* XXX ??? 64K */
+        break;
+    case DefltStack + 2:
+        data = 0x0000;
+        break;
+    
+    case CurApRefNum: /* "of application 's resFile" */
+        if (write) {
+            LMSetCurApRefNum(data);
+        } else {
+            data = LMGetCurApRefNum();
         }
         break;
     
@@ -139,11 +173,32 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
         data = 0;
         break;
     
+    case TopMapHndl:
+        /* LMGetTopMapHndl() and LMSetTopMapHndl() are not in Carbon */
+        data = 0xdead;
+        break;
+    case TopMapHndl + 2:
+        data = 0x0000;
+        break;
+    
+    case CurMap: /* "refNum of current resource file" */
+        /* LMGetCurMap() and LMSetCurMap() are not in Carbon */
+        data = CurResFile();
+        break;
+    
     case ResLoad: /* "Auto-load feature" */
         if (write) {
             LMSetResLoad(data);
         } else {
             data = LMGetResLoad();
+        }
+        break;
+    
+    case ResErr: /* "Resource error code" */
+        if (write) {
+            LMSetResErr(data);
+        } else {
+            data = LMGetResErr();
         }
         break;
     

@@ -18,6 +18,13 @@ C14PurgeSpaceM68K(UInt32 regs[16])
 }
 
 
+DEFINE_API( void )
+C14SetApplLimit(void * zoneLimit)
+{
+    /* no-op */
+}
+
+
 DEFINE_API( Ptr )
 C14StripAddress(void * theAddress)
 {

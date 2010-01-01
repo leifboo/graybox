@@ -10,6 +10,7 @@
 #include "C14MixedMode.h"
 #include "C14OSUtils.h"
 #include "C14Quickdraw.h"
+#include "C14Resources.h"
 #include "C14SegLoad.h"
 #include "C14TextEdit.h"
 #include "C14Windows.h"
@@ -1351,12 +1352,12 @@ static C14RoutineDescriptor osTrap[0x100] = {
     { _MixedModeMagic, C14MM_V_L_A0, (ProcPtr)&HUnlock }, /* HUnLock */
     { _MixedModeMagic }, /* EmptyHandle */
     { _MixedModeMagic }, /* InitApplZone */
-    { _MixedModeMagic }, /* SetApplLimit */
-    { _MixedModeMagic }, /* BlockMove */
+    { _MixedModeMagic, C14MM_V_L_A0, (ProcPtr)&C14SetApplLimit }, /* SetApplLimit */
+    { _MixedModeMagic, C14MM_V_LLL_A0_A1_D0, (ProcPtr)&BlockMove }, /* BlockMove */
     { _MixedModeMagic }, /* PostEvent */
     { _MixedModeMagic, C14MM_W_WL_D0_D0_A0, (ProcPtr)&C14OSEventAvail }, /* OSEventAvail */
     { _MixedModeMagic }, /* GetOSEvent */
-    { _MixedModeMagic }, /* FlushEvents */
+    { _MixedModeMagic, C14MM_V_WW, (ProcPtr)&FlushEvents }, /* FlushEvents */
     { _MixedModeMagic }, /* VInstall */
     { _MixedModeMagic }, /* VRemove */
     { _MixedModeMagic }, /* OffLine */
@@ -1479,7 +1480,7 @@ static C14RoutineDescriptor osTrap[0x100] = {
     { _MixedModeMagic }, /* Myst_AA */
     { _MixedModeMagic }, /* Myst_AB */
     { _MixedModeMagic }, /* FileSysMgr */
-    { _MixedModeMagic }, /* Gestalt */
+    { _MixedModeMagic, C14MM_W_LL_D0_D0_A1, (ProcPtr)&Gestalt }, /* Gestalt */
     { _MixedModeMagic }, /* Myst_AE */
     { _MixedModeMagic }, /* Myst_AF */
     { _MixedModeMagic }, /* Myst_B0 */
@@ -1581,7 +1582,7 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic }, /* RGetResource */
     { _MixedModeMagic }, /* Count1Resources */
     { _MixedModeMagic }, /* Get1IxResource */
-    { _MixedModeMagic }, /* Get1IxType */
+    { _MixedModeMagic, C14MM_V_LW, (ProcPtr)&C14Get1IndType }, /* Get1IxType */
     { _MixedModeMagic }, /* Unique1ID */
     { _MixedModeMagic }, /* TeSelView */
     { _MixedModeMagic }, /* TePinScroll */
@@ -1594,10 +1595,10 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic }, /* XMunger */
     { _MixedModeMagic }, /* HOpenResFile */
     { _MixedModeMagic }, /* HCreateResFile */
-    { _MixedModeMagic }, /* Count1Types */
+    { _MixedModeMagic, C14MM_W_V, (ProcPtr)&Count1Types }, /* Count1Types */
     { _MixedModeMagic }, /* InvalMenuBar */
     { _MixedModeMagic }, /* SaveRestoreBits */
-    { _MixedModeMagic }, /* Get1Resource */
+    { _MixedModeMagic, C14MM_L_LW, (ProcPtr)&Get1Resource }, /* Get1Resource */
     { _MixedModeMagic }, /* Get1NamedResource */
     { _MixedModeMagic }, /* MaxSizeRsrc */
     { _MixedModeMagic }, /* RsrcMgr */
@@ -1709,7 +1710,7 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic }, /* StringWidth */
     { _MixedModeMagic }, /* CharWidth */
     { _MixedModeMagic }, /* SpaceExtra */
-    { _MixedModeMagic }, /* OSDispatch */
+    { _MixedModeMagic, C14MM_REGS, (ProcPtr)&C14OSDispatch }, /* OSDispatch */
     { _MixedModeMagic }, /* StdLine */
     { _MixedModeMagic }, /* LineTo */
     { _MixedModeMagic }, /* Line */
@@ -1938,7 +1939,7 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic, C14MM_B_WL, (ProcPtr)&EventAvail }, /* EventAvail */
     { _MixedModeMagic }, /* GetMouse */
     { _MixedModeMagic }, /* StillDown */
-    { _MixedModeMagic }, /* Button */
+    { _MixedModeMagic, C14MM_B_V, (ProcPtr)&Button }, /* Button */
     { _MixedModeMagic }, /* TickCount */
     { _MixedModeMagic }, /* GetKeys */
     { _MixedModeMagic }, /* WaitMouseUp */
@@ -2022,7 +2023,7 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic }, /* RsrcMapEntry */
     { _MixedModeMagic }, /* Secs2Date */
     { _MixedModeMagic }, /* Date2Secs */
-    { _MixedModeMagic }, /* SysBeep */
+    { _MixedModeMagic, C14MM_V_W, (ProcPtr)&SysBeep }, /* SysBeep */
     { _MixedModeMagic }, /* SysError */
     { _MixedModeMagic }, /* SI_PutIcon */
     { _MixedModeMagic }, /* TeGetText */
@@ -2120,7 +2121,7 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic }, /* GetMaxDevice */
     { _MixedModeMagic }, /* GetCTSeed */
     { _MixedModeMagic }, /* GetDeviceList */
-    { _MixedModeMagic }, /* GetMainDevice */
+    { _MixedModeMagic, C14MM_L_V, (ProcPtr)&GetMainDevice }, /* GetMainDevice */
     { _MixedModeMagic }, /* GetNextDevice */
     { _MixedModeMagic }, /* TestDeviceAttribute */
     { _MixedModeMagic }, /* SetDeviceAttribute */
@@ -2599,6 +2600,17 @@ static ProcPtr OSTable[0x100];
 static ProcPtr TBTrapTbl[0x400];
 
 
+static C14RoutineDescriptor descGetCurrentProcess = {
+    _MixedModeMagic, C14MM_W_L, (ProcPtr)&GetCurrentProcess
+};
+static C14RoutineDescriptor descGetFrontProcess = {
+    _MixedModeMagic, C14MM_W_L, (ProcPtr)&GetFrontProcess
+};
+static C14RoutineDescriptor descSameProcess = {
+    _MixedModeMagic, C14MM_W_LLL, (ProcPtr)&SameProcess
+};
+
+
 void
 C14InitTraps(void)
 {
@@ -2717,6 +2729,65 @@ C14Unimplemented(C14RoutineDescriptor *desc)
 }
 
 
+static void
+unimplementedOSDispatchTrap(UInt16 selector)
+{
+    static Str255 explanation;
+    char *buffer;
+    SInt16 itemHit;
+
+    buffer = (char *)&explanation[1];
+    sprintf(buffer,
+            "C-14 encountered an unimplemented OSDispatch trap. "
+            "The application must now quit."
+            "\n\n"
+            "%lx", selector);
+    explanation[0] = strlen(buffer);
+    
+    StandardAlert(
+        kAlertDefaultOKText,
+        "\pUnimplemented Trap",
+        explanation,
+        nil,
+        &itemHit);
+    ExitToShell();
+}
+
+
+void
+C14OSDispatch(UInt32 regs[16])
+{
+#define SP regs[8+7]
+    UInt16 *sp = (UInt16 *)SP;
+    UInt16 selector;
+    
+    selector = sp[2];
+    /* move return address over selector */
+    sp[2] = sp[1];
+    sp[1] = sp[0];
+    SP += 2;
+    
+    switch (selector) {
+    case 0x0037:
+        C14MixedModeMagic(&descGetCurrentProcess, regs);
+        break;
+    case 0x0039:
+        /* extra selector? */
+        sp[3] = sp[1];
+        sp[2] = sp[0];
+        SP += 4;
+        C14MixedModeMagic(&descGetFrontProcess, regs);
+        break;
+    case 0x003D:
+        C14MixedModeMagic(&descSameProcess, regs);
+        break;
+    default:
+        unimplementedOSDispatchTrap(selector);
+        break;
+    }
+}
+
+
 void
 C14PrivateTrapDispatcher(UInt16 trapWord, UInt32 regs[16])
 {
@@ -2733,7 +2804,7 @@ C14PrivateTrapDispatcher(UInt16 trapWord, UInt32 regs[16])
         C14MixedModeMagic(desc, regs);
         return;
     }
-
+    
     /* push return address */
 #define SP regs[8+7]
     SP -= 4;

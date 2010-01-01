@@ -21,6 +21,9 @@ void
 C14Unimplemented(struct C14RoutineDescriptor *desc);
 
 void
+C14OSDispatch(UInt32 regs[16]);
+
+void
 C14PrivateTrapDispatcher(UInt16 trapWord, UInt32 regs[16]);
 
 
