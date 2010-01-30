@@ -4,6 +4,15 @@
 #include "C14M68K.h"
 
 
+static void C14MixedModeReturn(void) {
+    C14M68KStop();
+}
+
+C14RoutineDescriptor mixedModeReturn = {
+    _MixedModeMagic, C14MM_V_V, (ProcPtr)&C14MixedModeReturn
+};
+
+
 typedef UInt16 W;
 typedef UInt32 L;
 
@@ -40,8 +49,14 @@ C14MixedModeMagic(C14RoutineDescriptor *desc, UInt32 regs[16])
 #define FetchBoolean(i) (sp[i] >> 8)
 #define FetchLong(i) (((L)sp[i] << 16) | (L)sp[i+1])
     W *sp = (W *)SP;
-    L caller = FetchLong(0);
+    L caller;
     
+    if (desc == &mixedModeReturn) {
+        C14MixedModeReturn();
+        return;
+    }
+    
+    caller = FetchLong(0);
     sp += 2; /* skip return address */
     
     switch (desc->flags) {

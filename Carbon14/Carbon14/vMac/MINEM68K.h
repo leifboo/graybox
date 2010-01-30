@@ -41,9 +41,11 @@ EXPORTPROC MINEM68K_Init(ui3b **BankReadAddr, ui3b **BankWritAddr,
 EXPORTPROC ViaException(void);
 EXPORTPROC DiskInsertedPsuedoException(CPTR newpc, ui5b data);
 EXPORTPROC MacInterrupt (void);
-EXPORTPROC m68k_reset(CPTR pc, ui5b sp, ui5b a5);
+EXPORTPROC m68k_reset(CPTR pc, ui5b sp);
+EXPORTFUNC ui5b *m68k_regs(void);
 
 EXPORTPROC m68k_go_nInstructions(ui5b n);
+EXPORTPROC m68k_stop(void);
 
 EXPORTPROC m68k_backup_pc(void);
 EXPORTFUNC CPTR m68k_getpc(void);

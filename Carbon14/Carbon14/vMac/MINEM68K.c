@@ -145,8 +145,7 @@ LOCALFUNC ui3p get_pc_real_address(CPTR addr)
 	if (ba != nullpr) {
 		return (addr & MemBankAddrMask) + ba;
 	} else {
-		/* in trouble if get here */
-		return regs.fBankReadAddr[0];
+	    return (ui3p)addr;
 	}
 }
 
@@ -389,7 +388,7 @@ GLOBALFUNC MayInline void m68k_setpc(CPTR newpc)
 		Exception(5); /* try and get macsbug */
 	}
 #endif
-	pc_p = pc_oldp = (ui3p)newpc /*get_pc_real_address(newpc)*/ ;
+	pc_p = pc_oldp = get_pc_real_address(newpc);
 	regs.pc = newpc;
 }
 
@@ -470,11 +469,10 @@ GLOBALPROC ViaException(void)
 	}
 }
 
-GLOBALPROC m68k_reset(CPTR pc, ui5b sp, ui5b a5)
+GLOBALPROC m68k_reset(CPTR pc, ui5b sp)
 {
 	m68k_setpc(pc);
 	m68k_areg(7) = sp;
-	m68k_areg(5) = a5;
 
 	regs.s = 1;
 	regs.m = 0;
@@ -483,6 +481,11 @@ GLOBALPROC m68k_reset(CPTR pc, ui5b sp, ui5b a5)
 	regs.ExternalInterruptPending = falseblnr;
 	regs.TracePending = falseblnr;
 	regs.intmask = 7;
+}
+
+GLOBALFUNC ui5b *m68k_regs(void)
+{
+    return &regs.regs[0];
 }
 
 GLOBALPROC MINEM68K_Init(ui3b **BankReadAddr, ui3b **BankWritAddr,
@@ -2442,4 +2445,10 @@ GLOBALPROC m68k_go_nInstructions(ui5b n)
 		}
 		MaxInstructionsToGo = MoreInstructionsToGo;
 	} while (MaxInstructionsToGo != 0);
+}
+
+GLOBALPROC m68k_stop(void)
+{
+    MoreInstructionsToGo = 0;
+    MaxInstructionsToGo = 1;
 }

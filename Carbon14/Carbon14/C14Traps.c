@@ -1302,7 +1302,8 @@ static const char *tbTrapName[0x400] = {
     "GX_Message_Mgr",
     "TranslationMgr",
     "Myst_BFD",
-    "GXPrint_Mgr"
+    "GXPrint_Mgr",
+    ""
 };
 
 
@@ -2589,14 +2590,15 @@ static C14RoutineDescriptor tbTrap[0x400] = {
     { _MixedModeMagic }, /* GX_Message_Mgr */
     { _MixedModeMagic }, /* TranslationMgr */
     { _MixedModeMagic }, /* Myst_BFD */
-    { _MixedModeMagic }  /* GXPrint_Mgr */
+    { _MixedModeMagic }, /* GXPrint_Mgr */
+    { _MixedModeMagic }
 };
 
 
 /* 0x400 */
 static ProcPtr OSTable[0x100];
 
-/* 0xE00 */
+/* 0xC00 for Mac Plus -- "Sys Syms" says 0xE00 == 0xC00 - 0x200??? */
 static ProcPtr TBTrapTbl[0x400];
 
 

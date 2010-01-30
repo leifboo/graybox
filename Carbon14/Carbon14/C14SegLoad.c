@@ -96,6 +96,7 @@ C14ClassicM68KApplicationMain(void)
 {
     CODE0 **code0Handle, *code0;
     Ptr a5World, a5, sp; UInt32 stackSize;
+    UInt32 *regs;
     
     code0Handle = (CODE0 **)GetResource('CODE', 0);
     code0 = *code0Handle;
@@ -138,5 +139,7 @@ C14ClassicM68KApplicationMain(void)
     /*
      * Start the M68K emulator.
      */
-	C14M68KStart((Ptr)&jumpTable[0].code, sp, a5);
+    regs = C14M68KRegisters();
+    regs[8+5] = (UInt32)a5;
+    C14M68KStart((Ptr)&jumpTable[0].code, sp);
 }

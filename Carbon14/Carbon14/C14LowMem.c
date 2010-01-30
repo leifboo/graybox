@@ -1,6 +1,8 @@
 
 #include "C14LowMem.h"
 
+#include <string.h>
+
 
 /*
  * Names, values, & quotations from MacNosy / The Debugger "Sys Syms" file.
@@ -15,10 +17,12 @@ enum {
     Rom85           = 0x28E,
     ApplZone        = 0x2AA,
     RomBase         = 0x2AE,
+    MPWVars         = 0x316,
     DefltStack      = 0x322,
     CurApRefNum     = 0x900,
     CurrentA5       = 0x904,
     CurStackBase    = 0x908,
+    CurApName       = 0x910,
     FPFlgMode       = 0xA4A,
     TopMapHndl      = 0xA50,
     CurMap          = 0xA5A,
@@ -31,6 +35,7 @@ enum {
 static struct {
     Ptr CurrentA5; /* "current value of A5" */
     Ptr CurStackBase; /* "current stack base" */
+    Str31 CurApName; /* "application name" */
 } lowMem;
 
 
@@ -87,8 +92,13 @@ static UInt32 accessLong(UInt32 selector, UInt32 *longPtr,
 void
 C14InitLowMem(Ptr a5, Ptr stackBase)
 {
+    StringPtr curApNamePtr;
+    
     lowMem.CurrentA5 = a5;
     lowMem.CurStackBase = stackBase;
+    
+    curApNamePtr = LMGetCurApName();
+    memcpy(&lowMem.CurApName, curApNamePtr, curApNamePtr[0] + 1);
 }
 
 
@@ -98,6 +108,11 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
     UInt8 *bytePtr;
     UInt16 *wordPtr;
     UInt32 tmpLong;
+    
+    if (CurApName <= addr && addr < CurApName + sizeof(lowMem.CurApName)) {
+        addr = (UInt32)&lowMem.CurApName + (addr - CurApName);
+        goto real;
+    }
     
     switch (addr) {
     
@@ -141,6 +156,12 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
         data = 0x0000;
         break;
     
+    case MPWVars: /* TeachText */
+    case MPWVars + 2:
+    case MPWVars + 3:
+        data = 0xFFFF;
+        break;
+    
     case DefltStack: /* "default size of stack" */
         data = 0x0001; /* XXX ??? 64K */
         break;
@@ -173,14 +194,6 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
         data = 0;
         break;
     
-    case TopMapHndl:
-        /* LMGetTopMapHndl() and LMSetTopMapHndl() are not in Carbon */
-        data = 0xdead;
-        break;
-    case TopMapHndl + 2:
-        data = 0x0000;
-        break;
-    
     case CurMap: /* "refNum of current resource file" */
         /* LMGetCurMap() and LMSetCurMap() are not in Carbon */
         data = CurResFile();
@@ -208,6 +221,7 @@ C14LowMemAccess(UInt32 data, Boolean write, Boolean byte, UInt32 addr)
         break;
         
     default:
+  real:
         /* crash */
         if (byte) {
             bytePtr = (UInt8 *)addr;

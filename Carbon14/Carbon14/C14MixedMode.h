@@ -51,6 +51,9 @@ typedef struct C14RoutineDescriptor {
 } C14RoutineDescriptor;
 
 
+extern C14RoutineDescriptor mixedModeReturn;
+
+
 void
 C14MixedModeMagic(C14RoutineDescriptor *desc, UInt32 regs[16]);
 

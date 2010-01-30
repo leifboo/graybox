@@ -3,12 +3,17 @@
 #define __C14M68K_h__
 
 
-#include "C14Macros.h"
-#include "C14Types.h"
-
+void
+C14M68KMapMemory(UInt32 virtualPtr, Ptr ptr, Size size);
 
 void
-C14M68KStart(Ptr pc, Ptr sp, Ptr a5);
+C14M68KStart(Ptr pc, Ptr sp);
+
+void
+C14M68KStop(void);
+
+UInt32 *
+C14M68KRegisters(void);
 
 UInt32
 C14M68KGetPC(void);
