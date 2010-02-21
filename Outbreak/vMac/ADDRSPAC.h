@@ -21,12 +21,6 @@
 #endif
 
 EXPORTPROC Memory_Reset(void);
-EXPORTPROC ZapNMemoryVars(void);
-
-// VIA Interface Functions
-
-EXPORTFUNC ui3b VIA_GORA4(void); // Overlay/Normal Memory Mapping
-EXPORTPROC VIA_PORA4(ui3b Data);
 
 /*
 	mapping of address space to real memory
@@ -36,13 +30,6 @@ EXPORTVAR(ui3b *, BankReadAddr[NumMemBanks])
 EXPORTVAR(ui3b *, BankWritAddr[NumMemBanks]) /* if BankWritAddr[i] != NULL then BankWritAddr[i] == BankReadAddr[i] */
 
 EXPORTFUNC ui3b *get_real_address(CPTR addr);
-
-/*
-	accessing addresses that don't map to
-	real memory, i.e. memory mapped devices
-*/
-
-EXPORTFUNC ui5b MM_Access(ui5b Data, blnr WriteMem, blnr ByteSize, CPTR addr);
 
 /*
 	memory access routines that can use when have address
@@ -59,3 +46,6 @@ EXPORTFUNC ui5b MM_Access(ui5b Data, blnr WriteMem, blnr ByteSize, CPTR addr);
 #define put_ram_long(addr, l) do_put_mem_long((addr)+(ui3p)RAM, (l))
 
 #define get_ram_address(addr) ((addr)+(ui3p)RAM)
+
+#define kRAM_Size 0x00400000
+#define kROM_Size 0x020000

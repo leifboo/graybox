@@ -37,9 +37,12 @@
 
 #include "MINEM68K.h"
 
-#include "C14Traps.h"
+#include "ADDRSPAC.h"
 
-IMPORTFUNC ui5b MM_Access(ui5b Data, blnr WriteMem, blnr ByteSize, CPTR addr);
+#include "Display.h"
+#include "Gateway.h"
+#include "GrayBox.h"
+#include "Patching.h"
 
 typedef unsigned char flagtype;
 
@@ -63,80 +66,108 @@ LOCALVAR struct regstruct
 #define m68k_dreg(num) (regs.regs[(num)])
 #define m68k_areg(num) (regs.regs[(num)+8])
 
+#define IS_DISPLAY_ACCESS(addr) ((CPTR)vScreenBitMap.baseAddr <= (addr) && (addr) < vScreenTop)
+#define IS_SMALL_DISPLAY_ACCESS(addr) (0x3FA700 <= (addr) && (addr) < 0x3FFC80)
+
+#define get_display_address(v) (screenBitMap.baseAddr + (v - (CPTR)vScreenBitMap.baseAddr))
+
+#define vROMTop (0x00500000)
+#define vRAMTop (0x00400000)
+
+
 LOCALFUNC ui5b get_word(CPTR addr)
 {
-	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
-
-	if (ba != nullpr) {
-		ui3p m = (addr & MemBankAddrMask) + ba;
-		return do_get_mem_word(m);
-	} else {
-		return (ui4b) MM_Access(0, falseblnr, falseblnr, addr);
+	ui5b w = 0;
+	ui3p m;
+	
+	if ((addr & 0x00FFFFFF) < vROMTop) {
+		m = get_real_address(addr);
+		w = do_get_mem_word(m);
 	}
+	if (IS_DISPLAY_ACCESS(addr)) {
+		m = (ui3p)get_display_address(addr);
+		w = do_get_mem_word(m);
+	}
+	return w;
 }
 
 LOCALFUNC ui5b get_byte(CPTR addr)
 {
-	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
-
-	if (ba != nullpr) {
-		ui3p m = (addr & MemBankAddrMask) + ba;
+	if ((addr & 0x00FFFFFF) < vROMTop) {
+		ui3p m = (ui3p)get_real_address(addr);
 		return *m;
-	} else {
-		return (ui3b) MM_Access(0, falseblnr, trueblnr, addr);
 	}
+	if (IS_DISPLAY_ACCESS(addr)) {
+		ui3p m = (ui3p)get_display_address(addr);
+		return *m;
+	}
+	return 0;
 }
 
 LOCALFUNC ui5b get_long(CPTR addr)
 {
-	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
-
-	if (ba != nullpr) {
-		ui3p m = (addr & MemBankAddrMask) + ba;
-		return do_get_mem_long(m);
-	} else {
-		ui4b hi = get_word(addr);
-		ui4b lo = get_word(addr+2);
-		return (ui5b) (((ui5b)hi) << 16) | ((ui5b)lo);
+	if (addr == 0x16A) /* Ticks */ {
+		return TickCount();
 	}
+	
+	if ((addr & 0x00FFFFFF) < vROMTop) {
+		return do_get_mem_long(get_real_address(addr));
+	}
+	if (IS_DISPLAY_ACCESS(addr)) {
+		return do_get_mem_long(get_display_address(addr));
+	}
+	return 0;
 }
 
 LOCALPROC put_word(CPTR addr, ui5b w)
 {
-	ui3p ba = regs.fBankWritAddr[bankindex(addr)];
-
-	if (ba != nullpr) {
-		ui3p m = (addr & MemBankAddrMask) + ba;
-		do_put_mem_word(m, w);
-	} else {
-		(void) MM_Access(w, trueblnr, falseblnr, addr);
+	if ((addr & 0x00FFFFFF) < vRAMTop) {
+		do_put_mem_word(get_real_address(addr), w);
+	}
+	if (IS_DISPLAY_ACCESS(addr)) {
+		do_put_mem_word(get_display_address(addr), w);
+		WriteFrameBuffer(addr, w, 0);
+	} else if (IS_SMALL_DISPLAY_ACCESS(addr)) {
+		WriteSmallFrameBuffer(addr, w, 0);
 	}
 }
 
 LOCALPROC put_byte(CPTR addr, ui5b b)
 {
-	ui3p ba = regs.fBankWritAddr[bankindex(addr)];
-
-	if (ba != nullpr) {
-		ui3p m = (addr & MemBankAddrMask) + ba;
+	ui3p m;
+	
+	if ((addr & 0x00FFFFFF) < vRAMTop) {
+		m = (ui3p)get_real_address(addr);
 		*m = b;
-	} else {
-		(void) MM_Access(b, trueblnr, trueblnr, addr);
+	}
+	if (IS_DISPLAY_ACCESS(addr)) {
+		m = (ui3p)get_display_address(addr);
+		*m = b;
+		WriteFrameBuffer(addr, b, 1);
+	} else if (IS_SMALL_DISPLAY_ACCESS(addr)) {
+		WriteSmallFrameBuffer(addr, b, 1);
 	}
 }
 
 LOCALPROC put_long(CPTR addr, ui5b l)
 {
-	ui3p ba = regs.fBankWritAddr[bankindex(addr)];
-
-	if (ba != nullpr) {
-		ui3p m = (addr & MemBankAddrMask) + ba;
+	ui3p m;
+	
+	if ((addr & 0x00FFFFFF) < vRAMTop) {
+		m = (ui3p)get_real_address(addr);
 		do_put_mem_long(m, l);
-	} else {
-		put_word(addr, (l >> 16) & (0x0000FFFF));
-		put_word(addr+2, l & (0x0000FFFF));
+	}
+	if (IS_DISPLAY_ACCESS(addr)) {
+		m = (ui3p)get_display_address(addr);
+		do_put_mem_long(m, l);
+		WriteFrameBuffer(addr, (l >> 16) & (0x0000FFFF), 0);
+		WriteFrameBuffer(addr+2, l & (0x0000FFFF), 0);
+	} else if (IS_SMALL_DISPLAY_ACCESS(addr)) {
+		WriteSmallFrameBuffer(addr, (l >> 16) & (0x0000FFFF), 0);
+		WriteSmallFrameBuffer(addr+2, l & (0x0000FFFF), 0);
 	}
 }
+
 
 LOCALFUNC ui3p get_pc_real_address(CPTR addr)
 {
@@ -145,7 +176,7 @@ LOCALFUNC ui3p get_pc_real_address(CPTR addr)
 	if (ba != nullpr) {
 		return (addr & MemBankAddrMask) + ba;
 	} else {
-	    return (ui3p)addr;
+		return (ui3p)addr;
 	}
 }
 
@@ -350,7 +381,7 @@ LOCALFUNC MayInline void BackupPC(void)
 
 GLOBALPROC m68k_backup_pc(void)
 {
-    BackupPC();
+	BackupPC();
 }
 
 #define MakeDumpFile 0
@@ -435,6 +466,11 @@ LOCALPROC Exception(int nr)
 	ExceptionTo(get_long(4 * nr));
 }
 
+GLOBALPROC m68k_exception(int nr)
+{
+	Exception(nr);
+}
+
 GLOBALPROC DiskInsertedPsuedoException(CPTR newpc, ui5b data)
 {
 	ExceptionTo(newpc);
@@ -471,6 +507,8 @@ GLOBALPROC ViaException(void)
 
 GLOBALPROC m68k_reset(CPTR pc, ui5b sp)
 {
+	Memory_Reset();
+
 	m68k_setpc(pc);
 	m68k_areg(7) = sp;
 
@@ -485,7 +523,18 @@ GLOBALPROC m68k_reset(CPTR pc, ui5b sp)
 
 GLOBALFUNC ui5b *m68k_regs(void)
 {
-    return &regs.regs[0];
+	return &regs.regs[0];
+}
+
+/* cf. IM I-94 */
+GLOBALPROC m68k_test_d0(void) {
+	si5b srcvalue;
+	
+	srcvalue = regs.regs[0];
+	srcvalue = (si5b)(si4b)srcvalue;
+	VFLG = CFLG = 0;
+	ZFLG = (srcvalue == 0);
+	NFLG = (srcvalue < 0);
 }
 
 GLOBALPROC MINEM68K_Init(ui3b **BankReadAddr, ui3b **BankWritAddr,
@@ -1400,6 +1449,11 @@ LOCALVAR ui5b opcode;
 #define md6 ((opcode >> 6) & 7)
 #define rg9 ((opcode >> 9) & 7)
 
+GLOBALFUNC ui5b m68k_opcode(void)
+{
+	return opcode;
+}
+
 LOCALPROC FindOpSizeFromb76(void)
 {
 	switch (b76) {
@@ -1888,7 +1942,11 @@ LOCALPROCUSEDONCE DoCode4(void)
 							case 0 :
 							case 1 :
 								/* Trap 010011100100vvvv */
-								Exception((opcode & 15)+32);
+								if (opcode & 15) {
+									Exception((opcode & 15)+32);
+								} else {
+									GatewayDispatcher(opcode, regs.regs);
+								}
 								break;
 							case 2 :
 								/* Link */
@@ -2171,7 +2229,7 @@ LOCALPROCUSEDONCE DoCode9(void)
 
 LOCALPROCUSEDONCE DoCodeA(void)
 {
-    C14PrivateTrapDispatcher(opcode, regs.regs);
+	GBTrapDispatcher(opcode, regs.regs);
 }
 
 LOCALPROCUSEDONCE DoCodeB(void)
@@ -2449,6 +2507,6 @@ GLOBALPROC m68k_go_nInstructions(ui5b n)
 
 GLOBALPROC m68k_stop(void)
 {
-    MoreInstructionsToGo = 0;
-    MaxInstructionsToGo = 1;
+	MoreInstructionsToGo = 0;
+	MaxInstructionsToGo = 1;
 }

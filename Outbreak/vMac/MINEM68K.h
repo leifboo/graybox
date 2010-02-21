@@ -43,6 +43,9 @@ EXPORTPROC DiskInsertedPsuedoException(CPTR newpc, ui5b data);
 EXPORTPROC MacInterrupt (void);
 EXPORTPROC m68k_reset(CPTR pc, ui5b sp);
 EXPORTFUNC ui5b *m68k_regs(void);
+EXPORTFUNC ui5b m68k_opcode(void);
+EXPORTPROC m68k_test_d0(void);
+EXPORTPROC m68k_exception(int nr);
 
 EXPORTPROC m68k_go_nInstructions(ui5b n);
 EXPORTPROC m68k_stop(void);
