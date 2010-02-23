@@ -276,13 +276,18 @@ void GBPatchROM(void)
      1139E: A8A5           '..'             _FillRect ; (r:Rect; pat:Pattern) 
      113A0: 4E75           'Nu'             RTS     
     */
-    for (offset = 0x1138A; offset < 0x113A0; ++offset) {
+    for (offset = 0x11386; offset < 0x113A0; ++offset) {
         rom[offset >> 1] = 0x4E71; /*NOP*/
     }
-    rom[(0x1138A + 0) >> 1] = 0x262B;               /* MOVE.L  clipRgn(A3),D3 */
-    rom[(0x1138A + 2) >> 1] = 0x001C;
-    rom[(0x1138A + 4) >> 1] = 0x7000 | sysDeskHook; /* MOVEQ #i,D0 */
-    rom[(0x1138A + 6) >> 1] = 0x4E40;               /* TRAP #0 */
+    rom[(0x11386 +  0) >> 1] = 0x2F38;               /* PUSH.L  GrayRgn */
+    rom[(0x11386 +  2) >> 1] = 0x09EE;
+    rom[(0x11386 +  4) >> 1] = 0xA879;               /* _SetClip ; (rgn:RgnHandle) */
+    rom[(0x11386 +  6) >> 1] = 0x42A7;               /* CLR.L   -(A7) */
+    rom[(0x11386 +  8) >> 1] = 0xA90B;               /* _ClipAbove ; (window:WindowPeek) */
+    rom[(0x11386 + 10) >> 1] = 0x262B;               /* MOVE.L  clipRgn(A3),D3 */
+    rom[(0x11386 + 12) >> 1] = 0x001C;
+    rom[(0x11386 + 14) >> 1] = 0x7000 | sysDeskHook; /* MOVEQ #i,D0 */
+    rom[(0x11386 + 16) >> 1] = 0x4E40;               /* TRAP #0 */
     
     #if 0 /* for debugging */
     rom[0x352 >> 1] = 0x4E40; /*TRAP #0 */

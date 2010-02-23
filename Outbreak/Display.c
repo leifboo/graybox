@@ -29,6 +29,8 @@ static UInt32 screenSize;
 
 WindowPtr gMyMainWindow;
 static CGrafPtr dragPort;
+static CGContextRef gc;
+static RgnHandle deskRgn, maskRgn;
 
 static Rect dirtyRect;
 
@@ -49,7 +51,6 @@ static void initWindows(void)
 {
     Rect r;
     CGRect hr;
-    CGContextRef cg;
     WindowRef w;
     
     dragPort = CreateNewPort();
@@ -71,10 +72,9 @@ static void initWindows(void)
     SetPortWindowPort(w);
     EraseRect(&r);
 
-    CreateCGContextForPort(GetWindowPort(w), &cg);
+    CreateCGContextForPort(GetWindowPort(w), &gc);
     hr = CGRectFromQDRect(&screenBitMap.bounds);
-    CGContextClearRect(cg, hr);
-    CGContextRelease(cg);
+    CGContextClearRect(gc, hr);
     
     gMyMainWindow = w;
     
@@ -82,6 +82,9 @@ static void initWindows(void)
     vScreenBitMap = screenBitMap;
     vScreenBitMap.baseAddr = (Ptr)0xCD0000;
     vScreenTop = 0xCD0000 + screenSize;
+    
+    deskRgn = NewRgn();
+    maskRgn = NewRgn();
     
     //ForeColor(debugColor = redColor);
 }
@@ -98,16 +101,26 @@ static void trapScrnBitMap(UInt16 trapWord, UInt32 regs[16]) {
 void FlushDisplay(void)
 {
     if (!EmptyRect(&dirtyRect)) {
-        SectRect(&dirtyRect, &screenBitMap.bounds, &dirtyRect);
+        CGrafPtr port;
+        Rect portRect;
+        CGRect hr;
+        
+        port = GetWindowPort(gMyMainWindow);
+        GetPortBounds(port, &portRect);
+    
         CopyBits(&screenBitMap,
-                 GetPortBitMapForCopyBits(GetWindowPort(gMyMainWindow)),
-                 &dirtyRect, &dirtyRect, srcCopy, NULL);
-
+                 GetPortBitMapForCopyBits(port),
+                 &dirtyRect, &dirtyRect, srcCopy, maskRgn);
         //ForeColor(debugColor = (debugColor == redColor ? blueColor : redColor));
         //FrameRect(&dirtyRect);
 
-        SetRect(&dirtyRect, 32767, 32767, -32767, -32767);
+        hr = CGRectFromQDRect(&portRect);
+        CGContextClearRect(gc, hr);
+        QDAddRegionToDirtyRegion(port, deskRgn); /* XXX: too big? */
+
         QDFlushPortBuffer(GetWindowPort(gMyMainWindow), NULL);
+        
+        SetRect(&dirtyRect, 32767, 32767, -32767, -32767);
     }
 }
 
@@ -156,39 +169,21 @@ void WriteSmallFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize)
 }
 
 
-#pragma options align=mac68k
-struct ClassicRegion {
-    unsigned short      rgnSize;
-    Rect                rgnBBox;
-};
-#pragma options align=reset
-
-
-void EraseDesktop(Handle classicClipRgn)
+void EraseDesktop(Handle classicDeskRgn)
 {
-    RgnHandle clipRgn;
-    CGContextRef gc;
     CGrafPtr port;
     Rect portRect;
-    CGRect hr;
-    struct ClassicRegion *debug;
-    
-    debug = (struct ClassicRegion *)*classicClipRgn;
-    
-    clipRgn = NewRgn();
-    HandleToRgn(classicClipRgn, clipRgn);
     
     port = GetWindowPort(gMyMainWindow);
-    CreateCGContextForPort(port, &gc);
     GetPortBounds(port, &portRect);
-    ClipCGContextToRegion(gc, &portRect, clipRgn);
-    hr = CGRectFromQDRect(&portRect);
-    CGContextClearRect(gc, hr);
-    CGContextRelease(gc);
     
-    QDAddRegionToDirtyRegion(port, clipRgn);
+    HandleToRgn(classicDeskRgn, deskRgn);
+    RectRgn(maskRgn, &portRect);
+    DiffRgn(maskRgn, deskRgn, maskRgn);
     
-    DisposeRgn(clipRgn);
+    ClipCGContextToRegion(gc, &portRect, deskRgn);
+    
+    UnionRect(&dirtyRect, &portRect, &dirtyRect);
 }
 
 
