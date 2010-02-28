@@ -20,7 +20,9 @@
 
 
 extern BitMap screenBitMap, vScreenBitMap;
-extern WindowPtr gMyMainWindow;
+extern WindowPtr windowsWindow, menusWindow;
+extern CGrafPtr windowsPort, menusPort;
+extern Boolean inMenuSelect;
 
 
 Boolean InitDisplay(void);
@@ -28,6 +30,7 @@ void FlushDisplay(void);
 void WriteFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize);
 void WriteSmallFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize);
 void EraseDesktop(Handle);
+void MenuSelectReturn(UInt16 trapWord, UInt32 regs[16]);
 
 
 #endif /* __Display_h__ */

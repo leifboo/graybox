@@ -1349,3 +1349,13 @@ void closeLog(void) {
     fclose(trapLog);
     trapLog = 0;
 }
+
+
+void increaseIndent(void) {
+    ++indent;
+}
+
+
+void decreaseIndent(void) {
+    --indent;
+}

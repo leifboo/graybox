@@ -19,6 +19,7 @@
 
 #include "Display.h"
 #include "GrayBox.h"
+#include "Logging.h"
 #include "Patching.h"
 #include "vMac.h"
 
@@ -47,6 +48,8 @@ GetOSEvent(
   EventRecord *  theEvent)
 {
     WindowPtr window;
+    CGrafPtr port;
+    Point where;
     
     FlushDisplay();
     
@@ -55,6 +58,8 @@ GetOSEvent(
     while (true) {
         WaitNextEvent(mask, theEvent, 0, NULL);
         
+        where = theEvent->where;
+        GlobalToLocal(&theEvent->where);
         updateMouse(&theEvent->where);
 
         switch (theEvent->what) {
@@ -64,26 +69,24 @@ GetOSEvent(
             return false;
         
         case mouseDown:
-            switch (FindWindow(theEvent->where, &window)) {
+            switch (FindWindow(where, &window)) {
             case inContent:
-                if (window != FrontWindow()) {
-                    SelectWindow(window);
-                } else if (window == gMyMainWindow) {
-                    SetPortWindowPort(gMyMainWindow);
-                    GlobalToLocal(&theEvent->where);
-                    return true;
-                }
+                return true;
             }
             break;
         
+        case mouseUp:
+            GetPort(&port);
+            if (port == menusPort) {
+                inMenuSelect = false;
+                decreaseIndent();
+                SetPort(windowsPort);
+            }
+            return true;
+            
         case keyDown:
         case keyUp:
         case autoKey:
-            return true;
-        
-        case mouseUp:
-            SetPortWindowPort(gMyMainWindow);
-            GlobalToLocal(&theEvent->where);
             return true;
         
         case osEvt:
@@ -120,7 +123,19 @@ static void trapOSEventAvail(UInt16 trapWord, UInt32 regs[16])
         regs[0] = 0xffffffff;
     }
     
+    GlobalToLocal(&eventRecord->where);
     updateMouse(&eventRecord->where);
+    
+    if (eventRecord->what == mouseUp) {
+        CGrafPtr port;
+        
+        GetPort(&port);
+        if (port == menusPort) {
+            inMenuSelect = false;
+            decreaseIndent();
+            SetPort(windowsPort);
+        }
+    }
     
     m68k_test_d0();
 }

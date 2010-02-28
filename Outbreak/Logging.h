@@ -21,6 +21,8 @@
 
 void logTrap(UInt16 trapWord, UInt32 regs[16]);
 void closeLog(void);
+void increaseIndent(void);
+void decreaseIndent(void);
 
 
 #endif /* __Logging_h__ */

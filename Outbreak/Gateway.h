@@ -22,13 +22,14 @@
 enum {
     sysBootBlock,
     sysDeskHook,
+    sysMenuSelectReturn,
     
     nSysCalls
 };
 
 
 enum {
-    vGateway = 0x00470000
+    vGateway = 0x00600000
 };
 
 

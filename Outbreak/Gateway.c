@@ -21,9 +21,12 @@
 #include "GrayBox.h"
 #include "vMac.h"
 
+#include <Traps.h>
+
 
 enum {
-    gatewayEntrySize = 4*sizeof(UInt16)
+    gatewayInstCount = 4,
+    gatewayEntrySize = gatewayInstCount*sizeof(UInt16)
 };
 
 
@@ -32,16 +35,19 @@ UInt16 *gateway;
 
 void InitGateway(void)
 {
-    unsigned int i;
+    unsigned int i, o;
 
     gateway = (UInt16 *)NewPtr(nSysCalls * gatewayEntrySize);
     
     for (i = 0; i < nSysCalls; ++i) {
-        gateway[i + 0] = 0x7000 | i; /* MOVEQ #i,D0 */
-        gateway[i + 1] = 0x4E40;     /* TRAP #0 */
-        gateway[i + 2] = 0x4E75;     /* RTS */
-        gateway[i + 3] = 0x4E71;     /* NOP */
+        o = i * gatewayInstCount;
+        gateway[o + 0] = 0x4E71;     /* NOP */
+        gateway[o + 1] = 0x7000 | i; /* MOVEQ #i,D0 */
+        gateway[o + 2] = 0x4E40;     /* TRAP #0 */
+        gateway[o + 3] = 0x4E75;     /* RTS */
     }
+    
+    gateway[sysMenuSelectReturn * gatewayInstCount] = _MenuSelect;
 }
 
 
@@ -88,9 +94,11 @@ void GatewayDispatcher(UInt16 trapWord, UInt32 regs[16])
     (void)trapWord;
 
     switch (regs[0]) {
+    
     case sysBootBlock:
         bootBlock(trapWord, regs);
         break;
+    
     case sysDeskHook: {
         Handle classicClipRgn = (Handle)get_real_address(regs[3]);
         Ptr vPtr = *classicClipRgn;
@@ -98,5 +106,9 @@ void GatewayDispatcher(UInt16 trapWord, UInt32 regs[16])
         EraseDesktop(classicClipRgn);
         *classicClipRgn = vPtr;
         break; }
+    
+    case sysMenuSelectReturn:
+        MenuSelectReturn(trapWord, regs);
+        break;
     }
 }

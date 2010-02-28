@@ -17,7 +17,9 @@
 
 #include "Display.h"
 
+#include "Gateway.h"
 #include "GrayBox.h"
+#include "Logging.h"
 #include "Patching.h"
 #include "vMac.h"
 
@@ -27,12 +29,16 @@
 BitMap screenBitMap, vScreenBitMap;
 static UInt32 screenSize;
 
-WindowPtr gMyMainWindow;
+WindowPtr windowsWindow, menusWindow;
+CGrafPtr windowsPort, menusPort;
+static CGContextRef menusGC, windowsGC, deskGC;
 static CGrafPtr dragPort;
-static CGContextRef gc;
 static RgnHandle deskRgn, maskRgn;
 
 static Rect dirtyRect;
+
+Boolean inMenuSelect;
+static short trimMenuFlush;
 
 static long debugColor;
 
@@ -43,23 +49,24 @@ static long debugColor;
 
 static CGRect CGRectFromQDRect(Rect *r)
 {
-    return CGRectMake(r->left, r->top, r->right - r->left, r->bottom - r->top);
+    /* XXX: How to map from QD origin to CG origin? */
+    return CGRectMake(r->left, 1200 - r->bottom, r->right - r->left, r->bottom - r->top);
 }
 
 
 static void initWindows(void)
 {
     Rect r;
-    CGRect hr;
-    WindowRef w;
+    CGRect db;
     
     dragPort = CreateNewPort();
     
-    hr = CGDisplayBounds(kCGDirectMainDisplay);
-    r.left   = hr.origin.x;
-    r.top    = hr.origin.y;
-    r.right  = hr.origin.x + hr.size.width;
-    r.bottom = hr.origin.y + hr.size.height;
+    /* XXX: Y axis is reversed */
+    db = CGDisplayBounds(kCGDirectMainDisplay);
+    r.left   = db.origin.x;
+    r.top    = db.origin.y;
+    r.right  = db.origin.x + db.size.width;
+    r.bottom = db.origin.y + db.size.height;
     
     screenBitMap.rowBytes = (r.right - r.left) / 8;
     screenBitMap.bounds = r;
@@ -67,16 +74,17 @@ static void initWindows(void)
     OffsetRect(&screenBitMap.bounds, -r.left, -r.top);
     screenSize = screenBitMap.rowBytes * screenBitMap.bounds.bottom;
     
-    CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &w);
-    SetWindowGroup(w, GetWindowGroupOfClass(kDocumentWindowClass));
-    SetPortWindowPort(w);
-    EraseRect(&r);
+    CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &windowsWindow);
+    SetWindowGroup(windowsWindow, GetWindowGroupOfClass(kDocumentWindowClass));
+    CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &menusWindow);
+    SetWindowGroup(menusWindow, GetWindowGroupOfClass(kDocumentWindowClass));
+    windowsPort = GetWindowPort(windowsWindow);
+    menusPort = GetWindowPort(menusWindow);
+    CreateCGContextForPort(windowsPort, &windowsGC);
+    CreateCGContextForPort(windowsPort, &deskGC);
+    CreateCGContextForPort(menusPort, &menusGC);
 
-    CreateCGContextForPort(GetWindowPort(w), &gc);
-    hr = CGRectFromQDRect(&screenBitMap.bounds);
-    CGContextClearRect(gc, hr);
-    
-    gMyMainWindow = w;
+    SetPort(windowsPort);
     
     screenBitMap.baseAddr = NewPtr(screenSize);
     vScreenBitMap = screenBitMap;
@@ -102,23 +110,33 @@ void FlushDisplay(void)
 {
     if (!EmptyRect(&dirtyRect)) {
         CGrafPtr port;
-        Rect portRect;
-        CGRect hr;
+        CGRect cgRect;
         
-        port = GetWindowPort(gMyMainWindow);
-        GetPortBounds(port, &portRect);
-    
+        GetPort(&port);
+        
+        /* clear alpha */
+        if (port == windowsPort) {
+            cgRect = CGRectFromQDRect(&dirtyRect);
+            CGContextFillRect(windowsGC, cgRect);
+        } else {
+            if (trimMenuFlush) {
+                dirtyRect.bottom = trimMenuFlush;
+                trimMenuFlush = 0;
+            }
+            cgRect = CGRectFromQDRect(&dirtyRect);
+            CGContextFillRect(menusGC, cgRect);
+        }
+        
         CopyBits(&screenBitMap,
                  GetPortBitMapForCopyBits(port),
-                 &dirtyRect, &dirtyRect, srcCopy, maskRgn);
+                 &dirtyRect, &dirtyRect, srcCopy,
+                 /* This makes document window drawing perfect,
+                    but alerts get clipped. */
+                 NULL /*port == windowsPort ? maskRgn : NULL*/ );
         //ForeColor(debugColor = (debugColor == redColor ? blueColor : redColor));
         //FrameRect(&dirtyRect);
 
-        hr = CGRectFromQDRect(&portRect);
-        CGContextClearRect(gc, hr);
-        QDAddRegionToDirtyRegion(port, deskRgn); /* XXX: too big? */
-
-        QDFlushPortBuffer(GetWindowPort(gMyMainWindow), NULL);
+        QDFlushPortBuffer(port, NULL);
         
         SetRect(&dirtyRect, 32767, 32767, -32767, -32767);
     }
@@ -171,19 +189,20 @@ void WriteSmallFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize)
 
 void EraseDesktop(Handle classicDeskRgn)
 {
-    CGrafPtr port;
     Rect portRect;
+    CGRect cgRect;
     
-    port = GetWindowPort(gMyMainWindow);
-    GetPortBounds(port, &portRect);
+    GetPortBounds(windowsPort, &portRect);
     
     HandleToRgn(classicDeskRgn, deskRgn);
     RectRgn(maskRgn, &portRect);
     DiffRgn(maskRgn, deskRgn, maskRgn);
     
-    ClipCGContextToRegion(gc, &portRect, deskRgn);
+    ClipCGContextToRegion(deskGC, &portRect, deskRgn);
     
-    UnionRect(&dirtyRect, &portRect, &dirtyRect);
+    cgRect = CGRectFromQDRect(&portRect);
+    CGContextClearRect(deskGC, cgRect);
+    CGContextFlush(deskGC);
 }
 
 
@@ -228,7 +247,7 @@ static void trapObscureCursor(UInt16 trapWord, UInt32 regs[16]) {
 
 
 /*
- * menus, windows
+ * windows
  */
 
 static void trapDragGrayRgn(UInt16 trapWord, UInt32 regs[16])
@@ -280,9 +299,15 @@ static void trapDragGrayRgn(UInt16 trapWord, UInt32 regs[16])
 }
 
 
+
+/*
+ * menus
+ */
+
 static void trapDrawMenuBar(UInt16 trapWord, UInt32 regs[16])
 {
-    ShowWindow(gMyMainWindow);
+    ShowWindow(windowsWindow);
+    ShowWindow(menusWindow);
     HideMenuBar();
     
     /* actually perform the trap */
@@ -291,6 +316,143 @@ static void trapDrawMenuBar(UInt16 trapWord, UInt32 regs[16])
 
     (void)trapWord; (void)regs;
 }
+
+
+static void trapMenuSelect(UInt16 trapWord, UInt32 regs[16])
+{
+    UInt32 pc; UInt16 *sp;
+    
+    FlushDisplay();
+    SetPort(menusPort);
+    
+    if (true) {
+        /* XXX: code below causes freeze !@#$% ??? */
+        increaseIndent();
+        inMenuSelect = true;
+        m68k_backup_pc();
+        m68k_exception(0xA);
+        return;
+    }
+    
+    /*
+     * Change the M68K processor context so that it is
+     * as if MenuSelect() had been called from the gateway.
+     *
+     * Stack
+     * -----
+     *
+     * before          after
+     *
+     * +8 +----------+ +12 +----------+
+     *    |          |     |          |  sp[5]
+     *    + result   +     + ret addr +
+     *    |          |     |          |  sp[4]
+     * +4 +----------+  +8 +----------+
+     *    |          |     |          |  sp[3]
+     *    + startPt  +     + result   +
+     *    |          |     |          |  sp[2]
+     * +0 +----------+  +4 +----------+
+     *                     |          |  sp[1]
+     *                     + startPt  +
+     *                     |          |  sp[0]
+     *                A7+0 +----------+
+     *
+     */
+    
+    regs[8+7] -= 4;
+    sp = (UInt16 *)get_real_address(regs[8+7]);
+    
+    /* move argument 'startPt' */
+    sp[0] = sp[2];
+    sp[1] = sp[3];
+    
+    /* save return address
+       (pointer to instruction following original trap) */
+    pc = m68k_getpc();
+    sp[4] = HiWord(pc);
+    sp[5] = LoWord(pc);
+    
+    m68k_setpc(GetGatewayAddress(sysMenuSelectReturn));
+    //m68k_exception(0xA);
+    
+    (void)trapWord;
+}
+
+
+void MenuSelectReturn(UInt16 trapWord, UInt32 regs[16])
+{
+    UInt16 *sp;
+    UInt16 callerHi, callerLo;
+    
+    FlushDisplay();
+    SetPort(windowsPort);
+    inMenuSelect = false;
+
+    /*
+     * Next instruction is "RTS"; swap return value with
+     * the saved return address.
+     *
+     * XXX:  It would be more elegant to do all of this
+     *       in M68K glue code.
+     */
+    sp = (UInt16 *)get_real_address(regs[8+7]);
+    callerHi = sp[2];
+    callerLo = sp[3];
+    sp[2] = sp[0];
+    sp[3] = sp[1];
+    sp[0] = callerHi;
+    sp[1] = callerLo;
+    
+    (void)trapWord;
+}
+
+
+static void trapCopyBits(UInt16 trapWord, UInt32 regs[16])
+{
+    Ptr sp;
+    BitMap *dstBits;
+    Rect *dstRect;
+    CGRect cgRect;
+    
+    FlushDisplay(); /*see comment below*/
+    
+    sp = (Ptr)get_real_address(regs[8+7]);
+    
+    dstBits = (BitMap *)get_real_address(*(CPTR *)(sp + 14));
+    
+    if (inMenuSelect && dstBits->baseAddr == vScreenBitMap.baseAddr) {
+        /*
+         * The Menu Manager is attempting to clear a menu;
+         * clear to transparent instead.
+         */
+        
+        dstRect = (Rect *)get_real_address(*(CPTR *)(sp + 6));
+        cgRect = CGRectFromQDRect(dstRect);
+        CGContextClearRect(menusGC, cgRect);
+        CGContextFlush(menusGC);
+        
+        /*
+         * Skipping the trap leaves garbage on the document windows;
+         * but letting the CopyBits() happen clobbers the transparency.
+         * So we let CopyBits() happen, trim the next flush to preserve
+         * transparency, and force the next flush to happen at the
+         * next call to CopyBits(), as the Menu Manager is saving
+         * the area under the next menu.
+         */
+        if (0) {
+            regs[8+7] += 22;
+            return;
+        } else {
+            trimMenuFlush = 20;
+        }
+    }
+    
+    m68k_backup_pc();
+    m68k_exception(0xA);
+    
+    (void)trapWord;
+}
+
 
 
 /*
@@ -312,7 +474,10 @@ Boolean InitDisplay(void)
     /* let GetCursor pass through */
 
     tbTrapTable[_DragGrayRgn    & 0x3FF]    = trapDragGrayRgn;
+    
     tbTrapTable[_DrawMenuBar    & 0x3FF]    = trapDrawMenuBar;
-
+    tbTrapTable[_MenuSelect     & 0x3FF]    = trapMenuSelect;
+    tbTrapTable[_CopyBits       & 0x3FF]    = trapCopyBits;
+    
     return true;
 }

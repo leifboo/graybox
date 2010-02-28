@@ -97,9 +97,9 @@ GLOBALPROC Memory_Reset(void)
     SetUpBankRange(kRAM_BaseBank, kRAM_TopBank, (ui3b *)RAM, kRAM_Base, RAMmem_mask, trueblnr);
     
 	SetUpBankRange((vGateway >> ln2BytesPerMemBank),
-	               ((vGateway + 0x010000) >> ln2BytesPerMemBank),
+	               ((vGateway + 0x0100000) >> ln2BytesPerMemBank),
 	               (ui3b *)gateway, vGateway,
-	               (0x010000 - 1),
+	               (0x0100000 - 1),
 	               falseblnr);
 }
 
