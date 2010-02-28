@@ -27,6 +27,8 @@
 
 
 static Boolean inBackground;
+static int nullEventTally, nullEventAvailTally;
+static int windowCount = 16; /* XXX: obviously not a constant */
 
 
 static void updateMouse(Point *mouseLoc)
@@ -42,31 +44,54 @@ static void updateMouse(Point *mouseLoc)
 }
 
 
+static void handleOSEvent(EventRecord *theEvent) {
+    if ((theEvent->message >> 24) & suspendResumeMessage) {
+        inBackground = !(theEvent->message & 1);
+        
+        /* make sure menus are always on top */
+        if (!inBackground) {
+            SelectWindow(menusWindow);
+        }
+    }
+}
+
+
 static Boolean
 GetOSEvent(
-  EventMask      mask,
+  EventMask      eventMask,
   EventRecord *  theEvent)
 {
     WindowPtr window;
     CGrafPtr port;
     Point where;
+    UInt32 sleep;
     
     FlushDisplay();
     
-    mask |= highLevelEventMask | osMask;
+    eventMask |= highLevelEventMask | osMask;
     
     while (true) {
-        WaitNextEvent(mask, theEvent, 0, NULL);
+        sleep = nullEventTally < windowCount
+                ? 0 /* can't sleep: there might be windows that need updating */
+                : (inBackground
+                   ? (UInt32)-1 /* in background, nothing to do: sleep forever */
+                   : 15); /* good enough for flashing text insertion point */
+        
+        WaitNextEvent(eventMask, theEvent, sleep, NULL);
         
         where = theEvent->where;
         GlobalToLocal(&theEvent->where);
         updateMouse(&theEvent->where);
+        
+        if (theEvent->what == nullEvent) {
+            /* allow update events to happen */
+            ++nullEventTally;
+            return false;
+        } else {
+            nullEventTally = 0;
+        }
 
         switch (theEvent->what) {
-        
-        case nullEvent:
-            /* allow update events to happen */
-            return false;
         
         case mouseDown:
             switch (FindWindow(where, &window)) {
@@ -90,9 +115,7 @@ GetOSEvent(
             return true;
         
         case osEvt:
-            if ((theEvent->message >> 24) & suspendResumeMessage) {
-                inBackground = !(theEvent->message & 1);
-            }
+            handleOSEvent(theEvent);
             break;
         
         case kHighLevelEvent:
@@ -111,22 +134,45 @@ GetOSEvent(
 static void trapOSEventAvail(UInt16 trapWord, UInt32 regs[16])
 {
     EventMask eventMask = regs[0];
-    EventRecord *eventRecord = (EventRecord *)get_real_address(regs[8+0]);
+    EventRecord *theEvent = (EventRecord *)get_real_address(regs[8+0]);
     
     (void)trapWord;
     
     FlushDisplay();
     
-    if (EventAvail(eventMask, eventRecord)) {
+    if (EventAvail(eventMask, theEvent)) {
         regs[0] = 0;
+        nullEventAvailTally = 0;
     } else {
+        EventRecord osEvent;
+        
+        /* We must return a null event at least twice
+           in order for MenuSelect() to draw the initial menu. */
+        if (nullEventAvailTally < 2) {
+            ++nullEventAvailTally;
+        } else {
+            /*
+             * Reduce CPU usage during dragging.  It's a pity there's
+             * no WaitNextEventAvail(); but the app might be
+             * animating something, so we can only sleep for a few
+             * ticks anyway.  15 fps is good enough for marching ants,
+             * and a delay of 4 ticks is not perceptible when releasing
+             * the mouse on a menu item (for example).
+             */
+            RgnHandle mouseRgn = NewRgn();
+            if (WaitNextEvent(osMask, &osEvent, 4, mouseRgn)) {
+                handleOSEvent(&osEvent);
+            }
+            DisposeRgn(mouseRgn);
+        }
+        
         regs[0] = 0xffffffff;
     }
     
-    GlobalToLocal(&eventRecord->where);
-    updateMouse(&eventRecord->where);
+    GlobalToLocal(&theEvent->where);
+    updateMouse(&theEvent->where);
     
-    if (eventRecord->what == mouseUp) {
+    if (theEvent->what == mouseUp) {
         CGrafPtr port;
         
         GetPort(&port);
@@ -144,11 +190,11 @@ static void trapOSEventAvail(UInt16 trapWord, UInt32 regs[16])
 static void trapGetOSEvent(UInt16 trapWord, UInt32 regs[16])
 {
     EventMask eventMask = regs[0];
-    EventRecord *eventRecord = (EventRecord *)get_real_address(regs[8+0]);
+    EventRecord *theEvent = (EventRecord *)get_real_address(regs[8+0]);
 
     (void)trapWord;
     
-    if (GetOSEvent(eventMask, eventRecord)) {
+    if (GetOSEvent(eventMask, theEvent)) {
         regs[0] = 0;
     } else {
         regs[0] = 0xffffffff;
