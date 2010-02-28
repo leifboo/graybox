@@ -47,7 +47,8 @@ void InitGateway(void)
         gateway[o + 3] = 0x4E75;     /* RTS */
     }
     
-    gateway[sysMenuSelectReturn * gatewayInstCount] = _MenuSelect;
+    gateway[sysMenuSelect * gatewayInstCount] = _MenuSelect;
+    gateway[sysMenuSelect * gatewayInstCount + 1] = 0x7000 | sysReturn;
 }
 
 
@@ -107,8 +108,8 @@ void GatewayDispatcher(UInt16 trapWord, UInt32 regs[16])
         *classicClipRgn = vPtr;
         break; }
     
-    case sysMenuSelectReturn:
-        MenuSelectReturn(trapWord, regs);
+    case sysReturn:
+        m68k_stop();
         break;
     }
 }

@@ -28,6 +28,7 @@ extern TrapProcPtr tbTrapTable[];
 
 Boolean InitMisc(void);
 void GBTrapDispatcher(UInt16 trapWord, UInt32 regs[16]);
+void GBPerformTrap(void);
 void GBPatchROM(void);
 
 

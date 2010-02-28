@@ -22,9 +22,10 @@
 enum {
     sysBootBlock,
     sysDeskHook,
-    sysMenuSelectReturn,
+    sysMenuSelect,
     
-    nSysCalls
+    nSysCalls,
+    sysReturn
 };
 
 

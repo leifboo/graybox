@@ -110,6 +110,37 @@ void GBTrapDispatcher(UInt16 trapWord, UInt32 regs[16])
 }
 
 
+void GBPerformTrap(void) {
+    /*
+     * Perform the current trap, regaining control afterwards.
+     */
+    UInt16 *pc;
+    UInt16 save[2];
+    
+    increaseIndent();
+    
+    /* temporarily patch the code calling the trap */
+    pc = (UInt16 *)get_real_address(m68k_getpc());
+    save[0] = pc[0];
+    save[1] = pc[1];
+    pc[0] = 0x7000 | sysReturn; /* MOVEQ #sysReturn,D0 */
+    pc[1] = 0x4E40;             /* TRAP #0 */
+    
+    /* trap */
+    m68k_backup_pc();
+    m68k_exception(0xA);
+    m68k_go();
+    
+    /* restore */
+    m68k_backup_pc(); /* TRAP */
+    m68k_backup_pc(); /* MOVEQ */
+    pc[0] = save[0];
+    pc[1] = save[1];
+
+    decreaseIndent();
+}
+
+
 
 /*
  * ROM patches

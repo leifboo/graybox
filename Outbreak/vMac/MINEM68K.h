@@ -48,6 +48,7 @@ EXPORTPROC m68k_test_d0(void);
 EXPORTPROC m68k_exception(int nr);
 
 EXPORTPROC m68k_go_nInstructions(ui5b n);
+EXPORTPROC m68k_go(void);
 EXPORTPROC m68k_stop(void);
 
 EXPORTPROC m68k_backup_pc(void);

@@ -37,8 +37,7 @@ static RgnHandle deskRgn, maskRgn;
 
 static Rect dirtyRect;
 
-Boolean inMenuSelect;
-static short trimMenuFlush;
+static Boolean inMenuManager;
 
 static long debugColor;
 
@@ -115,17 +114,8 @@ void FlushDisplay(void)
         GetPort(&port);
         
         /* clear alpha */
-        if (port == windowsPort) {
-            cgRect = CGRectFromQDRect(&dirtyRect);
-            CGContextFillRect(windowsGC, cgRect);
-        } else {
-            if (trimMenuFlush) {
-                dirtyRect.bottom = trimMenuFlush;
-                trimMenuFlush = 0;
-            }
-            cgRect = CGRectFromQDRect(&dirtyRect);
-            CGContextFillRect(menusGC, cgRect);
-        }
+        cgRect = CGRectFromQDRect(&dirtyRect);
+        CGContextFillRect(port == windowsPort ? windowsGC : menusGC, cgRect);
         
         CopyBits(&screenBitMap,
                  GetPortBitMapForCopyBits(port),
@@ -304,106 +294,47 @@ static void trapDragGrayRgn(UInt16 trapWord, UInt32 regs[16])
  * menus
  */
 
-static void trapDrawMenuBar(UInt16 trapWord, UInt32 regs[16])
-{
-    ShowWindow(windowsWindow);
-    ShowWindow(menusWindow);
-    HideMenuBar();
-    
-    /* actually perform the trap */
-    m68k_backup_pc();
-    m68k_exception(0xA);
+static void enterMenuManager(void) {
+    ++inMenuManager;
+    if (inMenuManager == 1) {
+        FlushDisplay();
+        SetPort(menusPort);
+    }
+}
 
-    (void)trapWord; (void)regs;
+static void leaveMenuManager(void) {
+    --inMenuManager;
+    if (inMenuManager == 0) {
+        FlushDisplay();
+        SetPort(windowsPort);
+    }
 }
 
 
-static void trapMenuSelect(UInt16 trapWord, UInt32 regs[16])
+static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
 {
-    UInt32 pc; UInt16 *sp;
+    static int once = 1;
     
-    FlushDisplay();
-    SetPort(menusPort);
+    if (once) {
+        ShowWindow(windowsWindow);
+        ShowWindow(menusWindow);
+        HideMenuBar();
+        once = 0;
+    }
     
-    if (true) {
-        /* XXX: code below causes freeze !@#$% ??? */
-        increaseIndent();
-        inMenuSelect = true;
+    if (inMenuManager) {
+        /* Intercepting internal calls to HiliteMenu causes a system error.
+           Is the Menu Manager code recursive? */
         m68k_backup_pc();
         m68k_exception(0xA);
         return;
     }
     
-    /*
-     * Change the M68K processor context so that it is
-     * as if MenuSelect() had been called from the gateway.
-     *
-     * Stack
-     * -----
-     *
-     * before          after
-     *
-     * +8 +----------+ +12 +----------+
-     *    |          |     |          |  sp[5]
-     *    + result   +     + ret addr +
-     *    |          |     |          |  sp[4]
-     * +4 +----------+  +8 +----------+
-     *    |          |     |          |  sp[3]
-     *    + startPt  +     + result   +
-     *    |          |     |          |  sp[2]
-     * +0 +----------+  +4 +----------+
-     *                     |          |  sp[1]
-     *                     + startPt  +
-     *                     |          |  sp[0]
-     *                A7+0 +----------+
-     *
-     */
+    enterMenuManager();
+    GBPerformTrap();
+    leaveMenuManager();
     
-    regs[8+7] -= 4;
-    sp = (UInt16 *)get_real_address(regs[8+7]);
-    
-    /* move argument 'startPt' */
-    sp[0] = sp[2];
-    sp[1] = sp[3];
-    
-    /* save return address
-       (pointer to instruction following original trap) */
-    pc = m68k_getpc();
-    sp[4] = HiWord(pc);
-    sp[5] = LoWord(pc);
-    
-    m68k_setpc(GetGatewayAddress(sysMenuSelectReturn));
-    //m68k_exception(0xA);
-    
-    (void)trapWord;
-}
-
-
-void MenuSelectReturn(UInt16 trapWord, UInt32 regs[16])
-{
-    UInt16 *sp;
-    UInt16 callerHi, callerLo;
-    
-    FlushDisplay();
-    SetPort(windowsPort);
-    inMenuSelect = false;
-
-    /*
-     * Next instruction is "RTS"; swap return value with
-     * the saved return address.
-     *
-     * XXX:  It would be more elegant to do all of this
-     *       in M68K glue code.
-     */
-    sp = (UInt16 *)get_real_address(regs[8+7]);
-    callerHi = sp[2];
-    callerLo = sp[3];
-    sp[2] = sp[0];
-    sp[3] = sp[1];
-    sp[0] = callerHi;
-    sp[1] = callerLo;
-    
-    (void)trapWord;
+    (void)trapWord; (void)regs;
 }
 
 
@@ -414,13 +345,11 @@ static void trapCopyBits(UInt16 trapWord, UInt32 regs[16])
     Rect *dstRect;
     CGRect cgRect;
     
-    FlushDisplay(); /*see comment below*/
-    
     sp = (Ptr)get_real_address(regs[8+7]);
     
     dstBits = (BitMap *)get_real_address(*(CPTR *)(sp + 14));
     
-    if (inMenuSelect && dstBits->baseAddr == vScreenBitMap.baseAddr) {
+    if (inMenuManager && dstBits->baseAddr == vScreenBitMap.baseAddr) {
         /*
          * The Menu Manager is attempting to clear a menu;
          * clear to transparent instead.
@@ -434,21 +363,17 @@ static void trapCopyBits(UInt16 trapWord, UInt32 regs[16])
         /*
          * Skipping the trap leaves garbage on the document windows;
          * but letting the CopyBits() happen clobbers the transparency.
-         * So we let CopyBits() happen, trim the next flush to preserve
-         * transparency, and force the next flush to happen at the
-         * next call to CopyBits(), as the Menu Manager is saving
-         * the area under the next menu.
+         * So we let CopyBits() happen, and force a trimmed flush
+         * to preserve transparency.
          */
-        if (0) {
-            regs[8+7] += 22;
-            return;
-        } else {
-            trimMenuFlush = 20;
-        }
-    }
+        GBPerformTrap(); /* CopyBits() */
+        dirtyRect.bottom = 20;
+        FlushDisplay();
     
-    m68k_backup_pc();
-    m68k_exception(0xA);
+    } else {
+        m68k_backup_pc();
+        m68k_exception(0xA);
+    }
     
     (void)trapWord;
 }
@@ -475,8 +400,9 @@ Boolean InitDisplay(void)
 
     tbTrapTable[_DragGrayRgn    & 0x3FF]    = trapDragGrayRgn;
     
-    tbTrapTable[_DrawMenuBar    & 0x3FF]    = trapDrawMenuBar;
-    tbTrapTable[_MenuSelect     & 0x3FF]    = trapMenuSelect;
+    tbTrapTable[_DrawMenuBar    & 0x3FF]    = trapMenuDrawing;
+    tbTrapTable[_MenuSelect     & 0x3FF]    = trapMenuDrawing;
+    tbTrapTable[_HiliteMenu     & 0x3FF]    = trapMenuDrawing;
     tbTrapTable[_CopyBits       & 0x3FF]    = trapCopyBits;
     
     return true;

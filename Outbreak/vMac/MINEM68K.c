@@ -2505,8 +2505,19 @@ GLOBALPROC m68k_go_nInstructions(ui5b n)
 	} while (MaxInstructionsToGo != 0);
 }
 
+volatile static int go;
+
+GLOBALPROC m68k_go(void)
+{
+	go = 1;
+	while (go)
+		m68k_go_nInstructions(1024);
+	go = 1;
+}
+
 GLOBALPROC m68k_stop(void)
 {
 	MoreInstructionsToGo = 0;
 	MaxInstructionsToGo = 1;
+	go = 0;
 }

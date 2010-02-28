@@ -62,7 +62,6 @@ GetOSEvent(
   EventRecord *  theEvent)
 {
     WindowPtr window;
-    CGrafPtr port;
     Point where;
     UInt32 sleep;
     
@@ -101,12 +100,6 @@ GetOSEvent(
             break;
         
         case mouseUp:
-            GetPort(&port);
-            if (port == menusPort) {
-                inMenuSelect = false;
-                decreaseIndent();
-                SetPort(windowsPort);
-            }
             return true;
             
         case keyDown:
@@ -171,17 +164,6 @@ static void trapOSEventAvail(UInt16 trapWord, UInt32 regs[16])
     
     GlobalToLocal(&theEvent->where);
     updateMouse(&theEvent->where);
-    
-    if (theEvent->what == mouseUp) {
-        CGrafPtr port;
-        
-        GetPort(&port);
-        if (port == menusPort) {
-            inMenuSelect = false;
-            decreaseIndent();
-            SetPort(windowsPort);
-        }
-    }
     
     m68k_test_d0();
 }

@@ -175,8 +175,7 @@ int main(void)
     
     MINEM68K_Init(BankReadAddr, BankWritAddr, &dummy);    
     m68k_reset(/*pc =*/ *(CPTR *)(ROM + 4), /*sp =*/ *(ui5b *)ROM);
-    while (true)
-        m68k_go_nInstructions(1024);
+    m68k_go();
 
 leave:
     if (gNibs != NULL)
