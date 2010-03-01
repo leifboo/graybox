@@ -29,15 +29,15 @@
 BitMap screenBitMap, vScreenBitMap;
 static UInt32 screenSize;
 
-WindowPtr windowsWindow, menusWindow;
-CGrafPtr windowsPort, menusPort;
-static CGContextRef menusGC, windowsGC, deskGC;
+WindowPtr windowsWindow, menusWindow, debugWindow;
+CGrafPtr windowsPort, menusPort, debugPort;
+static CGContextRef menusGC, windowsGC, deskGC, debugGC;
 static CGrafPtr dragPort;
 static RgnHandle deskRgn, maskRgn;
 
 static Rect dirtyRect;
 
-static Boolean inMenuManager;
+static int inMenuManager, inPaintOne;
 
 static long debugColor;
 
@@ -77,12 +77,18 @@ static void initWindows(void)
     SetWindowGroup(windowsWindow, GetWindowGroupOfClass(kDocumentWindowClass));
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &menusWindow);
     SetWindowGroup(menusWindow, GetWindowGroupOfClass(kDocumentWindowClass));
+    CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &debugWindow);
+    SetWindowGroup(debugWindow, GetWindowGroupOfClass(kFloatingWindowClass));
     windowsPort = GetWindowPort(windowsWindow);
     menusPort = GetWindowPort(menusWindow);
+    debugPort = GetWindowPort(debugWindow);
     CreateCGContextForPort(windowsPort, &windowsGC);
     CreateCGContextForPort(windowsPort, &deskGC);
     CreateCGContextForPort(menusPort, &menusGC);
-
+    CreateCGContextForPort(debugPort, &debugGC);
+    
+    //CGContextClearRect(debugGC, db);
+    
     SetPort(windowsPort);
     
     screenBitMap.baseAddr = NewPtr(screenSize);
@@ -108,25 +114,27 @@ static void trapScrnBitMap(UInt16 trapWord, UInt32 regs[16]) {
 void FlushDisplay(void)
 {
     if (!EmptyRect(&dirtyRect)) {
-        CGrafPtr port;
+        CGrafPtr port; Rect portRect;
         CGRect cgRect;
         
         GetPort(&port);
+        GetPortBounds(port, &portRect);
         
         /* clear alpha */
         cgRect = CGRectFromQDRect(&dirtyRect);
+        if (port == windowsPort) {
+            ClipCGContextToRegion(windowsGC, &portRect, maskRgn);
+        }
         CGContextFillRect(port == windowsPort ? windowsGC : menusGC, cgRect);
         
         CopyBits(&screenBitMap,
                  GetPortBitMapForCopyBits(port),
                  &dirtyRect, &dirtyRect, srcCopy,
-                 /* This makes document window drawing perfect,
-                    but alerts get clipped. */
-                 NULL /*port == windowsPort ? maskRgn : NULL*/ );
-        //ForeColor(debugColor = (debugColor == redColor ? blueColor : redColor));
-        //FrameRect(&dirtyRect);
+                 port == windowsPort ? maskRgn : NULL);
 
-        QDFlushPortBuffer(port, NULL);
+        /*QDFlushPortBuffer(port, NULL);*/
+        /* flush CGContextFillRect() in addition to CopyBits() */
+        CGContextFlush(port == windowsPort ? windowsGC : menusGC);
         
         SetRect(&dirtyRect, 32767, 32767, -32767, -32767);
     }
@@ -135,12 +143,26 @@ void FlushDisplay(void)
 
 void WriteFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize)
 {
+    /*
+     * Compute a coarse 'dirtyRect' that bounds all of the
+     * M68K B&W Quickdraw's drawing since the last call to FlushDisplay().
+     *
+     * Since the B&W buffer is eight pixels per byte with no alpha,
+     * it is impossible for this routine to determine clipping/alpha
+     * accurately.  Most of the code complexity in this file deals with
+     * clipping the CopyBits() operation so that transparency is
+     * preserved.
+     */
+    
     int h, v;
     UInt32 offset;
     Rect r;
     
     (void)data;
     (void)byteSize;
+    
+    if (inMenuManager)
+        return;
     
     offset = addr - (UInt32)vScreenBitMap.baseAddr;
     
@@ -177,6 +199,11 @@ void WriteSmallFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize)
 }
 
 
+
+/*
+ * desktop
+ */
+
 void EraseDesktop(Handle classicDeskRgn)
 {
     Rect portRect;
@@ -194,6 +221,7 @@ void EraseDesktop(Handle classicDeskRgn)
     CGContextClearRect(deskGC, cgRect);
     CGContextFlush(deskGC);
 }
+
 
 
 /*
@@ -289,27 +317,18 @@ static void trapDragGrayRgn(UInt16 trapWord, UInt32 regs[16])
 }
 
 
+static void trapPaintOne(UInt16 trapWord, UInt32 regs[16]) {
+    ++inPaintOne;
+    GBPerformTrap();
+    --inPaintOne;
+    (void)trapWord; (void)regs;
+}
+
+
 
 /*
  * menus
  */
-
-static void enterMenuManager(void) {
-    ++inMenuManager;
-    if (inMenuManager == 1) {
-        FlushDisplay();
-        SetPort(menusPort);
-    }
-}
-
-static void leaveMenuManager(void) {
-    --inMenuManager;
-    if (inMenuManager == 0) {
-        FlushDisplay();
-        SetPort(windowsPort);
-    }
-}
-
 
 static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
 {
@@ -318,6 +337,7 @@ static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
     if (once) {
         ShowWindow(windowsWindow);
         ShowWindow(menusWindow);
+        ShowWindow(debugWindow);
         HideMenuBar();
         once = 0;
     }
@@ -330,9 +350,19 @@ static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
         return;
     }
     
-    enterMenuManager();
+    ++inMenuManager;
+    if (inMenuManager == 1) {
+        FlushDisplay();
+        SetPort(menusPort);
+    }
+    
     GBPerformTrap();
-    leaveMenuManager();
+    
+    --inMenuManager;
+    if (inMenuManager == 0) {
+        FlushDisplay();
+        SetPort(windowsPort);
+    }
     
     (void)trapWord; (void)regs;
 }
@@ -367,6 +397,7 @@ static void trapCopyBits(UInt16 trapWord, UInt32 regs[16])
          * to preserve transparency.
          */
         GBPerformTrap(); /* CopyBits() */
+        UnionRect(&dirtyRect, dstRect, &dirtyRect);
         dirtyRect.bottom = 20;
         FlushDisplay();
     
@@ -374,6 +405,98 @@ static void trapCopyBits(UInt16 trapWord, UInt32 regs[16])
         m68k_backup_pc();
         m68k_exception(0xA);
     }
+    
+    (void)trapWord;
+}
+
+
+static void trapLines(UInt16 trapWord, UInt32 regs[16]) {
+    Point p;
+    
+    if (inMenuManager) {
+        p = *(Point *)get_real_address(regs[8+7]);
+        
+        if (trapWord == _LineTo) {
+            /* clear alpha, assuming straight lines */
+            PenState penState;
+            Rect lineRect, begin, end;
+            CGRect alphaRect;
+            
+            GetPenState(&penState);
+            SetRect(&begin,
+                    penState.pnLoc.h,
+                    penState.pnLoc.v,
+                    penState.pnLoc.h + penState.pnSize.h,
+                    penState.pnLoc.v + penState.pnSize.h);
+            SetRect(&end,
+                    p.h,
+                    p.v,
+                    p.h + penState.pnSize.h,
+                    p.v + penState.pnSize.h);
+            UnionRect(&begin, &end, &lineRect);
+            alphaRect = CGRectFromQDRect(&lineRect);
+            CGContextFillRect(menusGC, alphaRect);
+        }
+        
+        switch (trapWord) {
+        case _MoveTo: MoveTo(p.h, p.v); break;
+        case _LineTo: LineTo(p.h, p.v); break;
+        case _PenSize: PenSize(p.h, p.v); break;
+        }
+        
+    }
+    
+    m68k_backup_pc();
+    m68k_exception(0xA);
+    (void)trapWord;
+}
+
+static void trapPenNormal(UInt16 trapWord, UInt32 regs[16]) {
+    if (inMenuManager) {
+        PenNormal();
+    }
+    m68k_backup_pc();
+    m68k_exception(0xA);
+    (void)trapWord; (void)regs;
+}
+
+
+
+/*
+ * misc. drawing
+ */
+
+static void trapRect(UInt16 trapWord, UInt32 regs[16]) {
+    Ptr sp;
+    Rect *r;
+    RgnHandle rgn;
+    
+    sp = (Ptr)get_real_address(regs[8+7]);
+    r = (Rect *)get_real_address(*(CPTR *)(sp + 0));
+    
+    if (inMenuManager) {
+        /*
+         * This gives us the precision needed for pull-down menus,
+         * which don't use regions.  The shadow is handled by
+         * trapLines().
+         *
+         */
+        UnionRect(&dirtyRect, r, &dirtyRect);
+    
+    } else if (inPaintOne) {
+        /*
+         * When a new window appears, the visible desktop region
+         * changes without our "DeskHook", EraseDesktop(), being called.
+         * So here, we accumulate new windows into our mask region.
+         */
+        rgn = NewRgn();
+        RectRgn(rgn, r);
+        UnionRgn(rgn, maskRgn, maskRgn);
+        DisposeRgn(rgn);
+    }
+    
+    m68k_backup_pc();
+    m68k_exception(0xA);
     
     (void)trapWord;
 }
@@ -404,6 +527,15 @@ Boolean InitDisplay(void)
     tbTrapTable[_MenuSelect     & 0x3FF]    = trapMenuDrawing;
     tbTrapTable[_HiliteMenu     & 0x3FF]    = trapMenuDrawing;
     tbTrapTable[_CopyBits       & 0x3FF]    = trapCopyBits;
-    
+    tbTrapTable[_FrameRect      & 0x3FF]    = trapRect;
+    tbTrapTable[_PaintRect      & 0x3FF]    = trapRect;
+    tbTrapTable[_EraseRect      & 0x3FF]    = trapRect;
+    tbTrapTable[_InverRect      & 0x3FF]    = trapRect;
+    tbTrapTable[_MoveTo         & 0x3FF]    = trapLines;
+    tbTrapTable[_LineTo         & 0x3FF]    = trapLines;
+    tbTrapTable[_PenSize        & 0x3FF]    = trapLines;
+    tbTrapTable[_PenNormal      & 0x3FF]    = trapPenNormal;
+    tbTrapTable[_PaintOne       & 0x3FF]    = trapPaintOne;
+
     return true;
 }
