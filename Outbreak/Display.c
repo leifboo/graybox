@@ -37,6 +37,8 @@ static RgnHandle deskRgn, maskRgn;
 
 static Rect dirtyRect;
 
+static SInt16 mBarHeight;
+
 static int inMenuManager, inPaintOne;
 
 static long debugColor;
@@ -76,7 +78,7 @@ static void initWindows(void)
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &windowsWindow);
     SetWindowGroup(windowsWindow, GetWindowGroupOfClass(kDocumentWindowClass));
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &menusWindow);
-    SetWindowGroup(menusWindow, GetWindowGroupOfClass(kDocumentWindowClass));
+    SetWindowGroup(menusWindow, GetWindowGroupOfClass(kFloatingWindowClass));
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &debugWindow);
     SetWindowGroup(debugWindow, GetWindowGroupOfClass(kFloatingWindowClass));
     windowsPort = GetWindowPort(windowsWindow);
@@ -86,6 +88,10 @@ static void initWindows(void)
     CreateCGContextForPort(windowsPort, &deskGC);
     CreateCGContextForPort(menusPort, &menusGC);
     CreateCGContextForPort(debugPort, &debugGC);
+    
+    /* Make sure the classic menu bar eclipses the Carbon one. */
+    SetWindowGroupLevel(GetWindowGroupOfClass(kFloatingWindowClass),
+                        kCGMainMenuWindowLevel);
     
     //CGContextClearRect(debugGC, db);
     
@@ -333,14 +339,21 @@ static void trapPaintOne(UInt16 trapWord, UInt32 regs[16]) {
 static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
 {
     static int once = 1;
+    SInt16 *mBarHeightPtr;
     
     if (once) {
         ShowWindow(windowsWindow);
         ShowWindow(menusWindow);
         ShowWindow(debugWindow);
-        HideMenuBar();
+        
+        mBarHeight = GetMBarHeight();
+        
         once = 0;
     }
+    
+    /* Make sure the classic menu bar eclipses the Carbon one. */
+    mBarHeightPtr = (SInt16 *)get_real_address(0xBAA);
+    *mBarHeightPtr = mBarHeight;
     
     if (inMenuManager) {
         /* Intercepting internal calls to HiliteMenu causes a system error.
@@ -398,7 +411,7 @@ static void trapCopyBits(UInt16 trapWord, UInt32 regs[16])
          */
         GBPerformTrap(); /* CopyBits() */
         UnionRect(&dirtyRect, dstRect, &dirtyRect);
-        dirtyRect.bottom = 20;
+        dirtyRect.bottom = mBarHeight;
         FlushDisplay();
     
     } else {

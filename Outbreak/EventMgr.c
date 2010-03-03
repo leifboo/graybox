@@ -95,6 +95,7 @@ GetOSEvent(
         case mouseDown:
             switch (FindWindow(where, &window)) {
             case inContent:
+            case inMenuBar:
                 return true;
             }
             break;
