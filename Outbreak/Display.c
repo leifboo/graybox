@@ -33,7 +33,7 @@ WindowPtr windowsWindow, menusWindow, debugWindow;
 CGrafPtr windowsPort, menusPort, debugPort;
 static CGContextRef menusGC, windowsGC, deskGC, debugGC;
 static CGrafPtr dragPort;
-static RgnHandle deskRgn, maskRgn;
+static RgnHandle deskRgn, windowsRgn;
 
 static Rect dirtyRect;
 
@@ -103,7 +103,7 @@ static void initWindows(void)
     vScreenTop = 0xCD0000 + screenSize;
     
     deskRgn = NewRgn();
-    maskRgn = NewRgn();
+    windowsRgn = NewRgn();
     
     //ForeColor(debugColor = redColor);
 }
@@ -121,23 +121,38 @@ void FlushDisplay(void)
 {
     if (!EmptyRect(&dirtyRect)) {
         CGrafPtr port; Rect portRect;
+        CGContextRef gc;
         CGRect cgRect;
         
         GetPort(&port);
         GetPortBounds(port, &portRect);
-        
-        /* clear alpha */
+        gc = (port == windowsPort ? windowsGC : menusGC);
         cgRect = CGRectFromQDRect(&dirtyRect);
-        if (port == windowsPort) {
-            ClipCGContextToRegion(windowsGC, &portRect, maskRgn);
-        }
-        CGContextFillRect(port == windowsPort ? windowsGC : menusGC, cgRect);
         
+        /*
+         * Clear alpha.  Note that this is unnecessary at millions
+         * of colors, as QuickDraw unwittingly clears the alpha channel.
+         * At lower screen depths, however, the alpha information is
+         * stored elsewhere, were QuickDraw can't touch it.
+         */
+        CGContextFillRect(gc, cgRect);
+        
+        /*
+         * CopyBits clobbers the transparency along the left and right
+         * edges of the destination rectangle (even when clipped to
+         * 'windowsRgn').  Therefore, pass NULL for 'maskRgn', and then
+         * clean up the mess afterwards with CGContextClearRect().
+         */
         CopyBits(&screenBitMap,
                  GetPortBitMapForCopyBits(port),
                  &dirtyRect, &dirtyRect, srcCopy,
-                 port == windowsPort ? maskRgn : NULL);
+                 /*maskRgn = */ NULL);
 
+        if (port == windowsPort) {
+            /* clean up the mess */
+            CGContextClearRect(deskGC, cgRect);
+        }
+        
         /*QDFlushPortBuffer(port, NULL);*/
         /* flush CGContextFillRect() in addition to CopyBits() */
         CGContextFlush(port == windowsPort ? windowsGC : menusGC);
@@ -218,8 +233,8 @@ void EraseDesktop(Handle classicDeskRgn)
     GetPortBounds(windowsPort, &portRect);
     
     HandleToRgn(classicDeskRgn, deskRgn);
-    RectRgn(maskRgn, &portRect);
-    DiffRgn(maskRgn, deskRgn, maskRgn);
+    RectRgn(windowsRgn, &portRect);
+    DiffRgn(windowsRgn, deskRgn, windowsRgn);
     
     ClipCGContextToRegion(deskGC, &portRect, deskRgn);
     
@@ -481,7 +496,7 @@ static void trapPenNormal(UInt16 trapWord, UInt32 regs[16]) {
 
 static void trapRect(UInt16 trapWord, UInt32 regs[16]) {
     Ptr sp;
-    Rect *r;
+    Rect *r, portRect;
     RgnHandle rgn;
     
     sp = (Ptr)get_real_address(regs[8+7]);
@@ -500,12 +515,16 @@ static void trapRect(UInt16 trapWord, UInt32 regs[16]) {
         /*
          * When a new window appears, the visible desktop region
          * changes without our "DeskHook", EraseDesktop(), being called.
-         * So here, we accumulate new windows into our mask region.
+         * So here, we accumulate new windows into 'windowsRgn',
+         * and subtract them from 'deskRgn'.
          */
         rgn = NewRgn();
         RectRgn(rgn, r);
-        UnionRgn(rgn, maskRgn, maskRgn);
+        UnionRgn(windowsRgn, rgn, windowsRgn);
+        DiffRgn(deskRgn, rgn, deskRgn);
         DisposeRgn(rgn);
+        GetPortBounds(windowsPort, &portRect);
+        ClipCGContextToRegion(deskGC, &portRect, deskRgn);
     }
     
     m68k_backup_pc();

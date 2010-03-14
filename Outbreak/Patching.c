@@ -93,7 +93,7 @@ void GBTrapDispatcher(UInt16 trapWord, UInt32 regs[16])
 {
     TrapProcPtr routine;
     
-    /*logTrap(trapWord, regs);*/
+    logTrap(trapWord, regs);
     
     if (trapWord & 0x800) {
         routine = tbTrapTable[trapWord & 0x3FF];
