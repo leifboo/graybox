@@ -30,16 +30,25 @@ enum {
 
 
 enum {
-    vGateway = 0x00600000
+    vGateway = 0x00600000,
+    nDrives = 2
 };
 
 
+typedef struct BBDrvQEl {
+    unsigned long dQFlags; /* IM II-128 */
+    DrvQEl elem;
+} BBDrvQEl;
+
+
 void InitGateway(void);
-UInt32 GetGatewayAddress(unsigned int sysCallNum);
+UInt32 GetGatewayEntryAddress(unsigned int sysCallNum);
+void GetGatewayFMDataStructs(UInt32 *vDrvQ, BBDrvQEl **drvQ,
+                             UInt32 *vVCB, VCB **vcbQ);
 void GatewayDispatcher(UInt16 trapWord, UInt32 regs[16]);
 
 
-extern UInt16 *gateway;
+extern Ptr gateway;
 
 
 #endif /* __Gateway_h__ */

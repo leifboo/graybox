@@ -71,7 +71,6 @@ LOCALVAR struct regstruct
 
 #define get_display_address(v) (screenBitMap.baseAddr + (v - (CPTR)vScreenBitMap.baseAddr))
 
-#define vROMTop (0x00500000)
 #define vRAMTop (0x00400000)
 
 
@@ -79,12 +78,12 @@ LOCALFUNC ui5b get_word(CPTR addr)
 {
 	ui5b w = 0;
 	ui3p m;
+	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
 	
-	if ((addr & 0x00FFFFFF) < vROMTop) {
-		m = get_real_address(addr);
+	if (ba != nullpr) {
+		m = (addr & MemBankAddrMask) + ba;
 		w = do_get_mem_word(m);
-	}
-	if (IS_DISPLAY_ACCESS(addr)) {
+	} else if (IS_DISPLAY_ACCESS(addr)) {
 		m = (ui3p)get_display_address(addr);
 		w = do_get_mem_word(m);
 	}
@@ -93,28 +92,39 @@ LOCALFUNC ui5b get_word(CPTR addr)
 
 LOCALFUNC ui5b get_byte(CPTR addr)
 {
-	if ((addr & 0x00FFFFFF) < vROMTop) {
-		ui3p m = (ui3p)get_real_address(addr);
-		return *m;
+    ui5b b;
+	ui3p m;
+	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
+
+	if (ba != nullpr) {
+		m = (addr & MemBankAddrMask) + ba;
+		b = *m;
+	} else if (IS_DISPLAY_ACCESS(addr)) {
+		m = (ui3p)get_display_address(addr);
+		b = *m;
 	}
-	if (IS_DISPLAY_ACCESS(addr)) {
-		ui3p m = (ui3p)get_display_address(addr);
-		return *m;
-	}
-	return 0;
+	return b;
 }
 
 LOCALFUNC ui5b get_long(CPTR addr)
 {
+	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
+	
 	if (addr == 0x16A) /* Ticks */ {
 		return TickCount();
 	}
 	
-	if ((addr & 0x00FFFFFF) < vROMTop) {
-		return do_get_mem_long(get_real_address(addr));
-	}
 	if (IS_DISPLAY_ACCESS(addr)) {
 		return do_get_mem_long(get_display_address(addr));
+	}
+	if (ba != nullpr) {
+		ui3p m = (addr & MemBankAddrMask) + ba;
+		ui5b l = do_get_mem_long(m);
+    	return l;
+	} else {
+		ui4b hi = get_word(addr);
+		ui4b lo = get_word(addr+2);
+		return (ui5b) (((ui5b)hi) << 16) | ((ui5b)lo);
 	}
 	return 0;
 }

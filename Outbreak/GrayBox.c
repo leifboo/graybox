@@ -152,7 +152,7 @@ static Boolean InitMemory(void)
 }
 
 
-Boolean InitCrappyFiles(void); /* XXX: temporary */
+Boolean InitMFS(void); /* XXX: temporary */
 
 
 int main(void)
@@ -169,7 +169,7 @@ int main(void)
     _(InitMemory());
     _(InitEvents());
     _(InitMisc());
-    _(InitCrappyFiles());
+    _(InitMFS());
     
     GBPatchROM();
     

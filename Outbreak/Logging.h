@@ -19,7 +19,9 @@
 #define __Logging_h__
 
 
+void fprintlog(const char *format, ...);
 void logTrap(UInt16 trapWord, UInt32 regs[16]);
+void logOSErr(OSErr err, StringPtr ioNamePtr);
 void closeLog(void);
 void increaseIndent(void);
 void decreaseIndent(void);

@@ -1318,6 +1318,18 @@ static int indent;
 static FILE *trapLog;
 
 
+void fprintlog(const char *format, ...) {
+    va_list ap;
+    
+    if (!trapLog)
+        trapLog = fopen("traplog.txt", "w");
+    va_start(ap, format);
+    fprintf(trapLog, "%*s", 4*indent, "");
+    vfprintf(trapLog, format, ap);
+    va_end(ap);
+}
+
+
 void logTrap(UInt16 trapWord, UInt32 regs[16]) {
     UInt32 pc;
     UInt16 trapNum;
@@ -1342,6 +1354,17 @@ void logTrap(UInt16 trapWord, UInt32 regs[16]) {
     fflush(trapLog);
     
     (void)regs;
+}
+
+
+void logOSErr(OSErr err, StringPtr ioNamePtr) {
+    if (!trapLog)
+        trapLog = fopen("traplog.txt", "w");
+    fprintf(trapLog, "%*s    = %d %.*s\n",
+            4*indent, "", err,
+            ioNamePtr ? ioNamePtr[0] : 0,
+            ioNamePtr ? (char *)ioNamePtr + 1 : "");
+    fflush(trapLog);
 }
 
 

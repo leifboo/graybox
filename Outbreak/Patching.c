@@ -93,7 +93,7 @@ void GBTrapDispatcher(UInt16 trapWord, UInt32 regs[16])
 {
     TrapProcPtr routine;
     
-    logTrap(trapWord, regs);
+    /*logTrap(trapWord, regs);*/
     
     if (trapWord & 0x800) {
         routine = tbTrapTable[trapWord & 0x3FF];
@@ -223,6 +223,7 @@ void GBPatchROM(void)
     rom[(0x9CA+0) >> 1] = 0x4E71; /*NOP*/
     #endif
 
+    #if 0 /* We now use this. */
     /*
        9D4: A00F           '..'             _MountVol ; (A0|IOPB:ParamBlockRec):D0\OSErr 
        9D6: 6600 01AA      1000B82          BNE     lag_79
@@ -230,6 +231,7 @@ void GBPatchROM(void)
     rom[(0x9D4+0) >> 1] = 0x4E71; /*NOP*/
     rom[(0x9D4+2) >> 1] = 0x4E71; /*NOP*/
     rom[(0x9D4+4) >> 1] = 0x4E71; /*NOP*/
+    #endif
 
     /* Evil!!!
       FF10: 2038 0358          358          MOVE.L  VCBQHdr+QHead,D0

@@ -30,31 +30,46 @@ enum {
 };
 
 
-UInt16 *gateway;
+Ptr gateway;
 
 
 void InitGateway(void)
 {
     unsigned int i, o;
+    UInt16 *entry;
 
-    gateway = (UInt16 *)NewPtr(nSysCalls * gatewayEntrySize);
+    gateway = NewPtr(nSysCalls * gatewayEntrySize +
+                     nDrives * sizeof(BBDrvQEl) +
+                     nDrives * sizeof(VCB));
+
+    entry = (UInt16 *)gateway;
     
     for (i = 0; i < nSysCalls; ++i) {
         o = i * gatewayInstCount;
-        gateway[o + 0] = 0x4E71;     /* NOP */
-        gateway[o + 1] = 0x7000 | i; /* MOVEQ #i,D0 */
-        gateway[o + 2] = 0x4E40;     /* TRAP #0 */
-        gateway[o + 3] = 0x4E75;     /* RTS */
+        entry[o + 0] = 0x4E71;     /* NOP */
+        entry[o + 1] = 0x7000 | i; /* MOVEQ #i,D0 */
+        entry[o + 2] = 0x4E40;     /* TRAP #0 */
+        entry[o + 3] = 0x4E75;     /* RTS */
     }
     
-    gateway[sysMenuSelect * gatewayInstCount] = _MenuSelect;
-    gateway[sysMenuSelect * gatewayInstCount + 1] = 0x7000 | sysReturn;
+    entry[sysMenuSelect * gatewayInstCount] = _MenuSelect;
+    entry[sysMenuSelect * gatewayInstCount + 1] = 0x7000 | sysReturn;
 }
 
 
-UInt32 GetGatewayAddress(unsigned int sysCallNum)
+UInt32 GetGatewayEntryAddress(unsigned int sysCallNum)
 {
     return vGateway + sysCallNum*gatewayEntrySize;
+}
+
+
+void GetGatewayFMDataStructs(UInt32 *vDrvQ, BBDrvQEl **drvQ,
+                             UInt32 *vVCBQ, VCB **vcbQ)
+{
+    *vDrvQ = vGateway + nSysCalls*gatewayEntrySize;
+    *vVCBQ = *vDrvQ + nDrives*sizeof(BBDrvQEl);
+    *drvQ = (BBDrvQEl *)(gateway + (*vDrvQ - vGateway));
+    *vcbQ = (VCB *)(gateway + (*vVCBQ - vGateway));
 }
 
 
