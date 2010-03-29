@@ -144,7 +144,9 @@ void FlushDisplay(void)
                  /*maskRgn = */ NULL);
 
         if (port == windowsPort) {
-            /* clean up the mess */
+            /* Clean up the mess.  CopyBits() seems to touch pixels
+               even beyond 'dirtyRect'. */
+            cgRect.size.width += 32;
             CGContextClearRect(deskGC, cgRect);
         }
         
@@ -329,6 +331,40 @@ static void trapDragGrayRgn(UInt16 trapWord, UInt32 regs[16])
     *theRgn = save;
     DisposeRgn(carbonRgn);
 
+    (void)trapWord;
+}
+
+
+static void trapGrowWindow(UInt16 trapWord, UInt32 regs[16]) {
+    long result;        /* 12 */
+    WindowPtr window;   /*  8 */
+    Point startPt;      /*  4 */
+    Rect *bBox;         /*  0 */
+    
+    Ptr sp; long *resultPtr;
+    WindowRef carbonWindow; Rect bounds, portRect;
+    
+    sp = (Ptr)get_real_address(regs[8+7]);
+    
+    resultPtr = (long *)(sp + 12);
+    window = (WindowPtr)get_real_address(*(CPTR *)(sp + 8));
+    startPt = *(Point *)(sp + 4);
+    bBox = (Rect *)get_real_address(*(CPTR *)(sp + 0));
+    
+    /* Create a temporary, invisible Carbon window for dragging. */
+    bounds = *(Rect *)((Ptr)window + 8);
+    portRect = *(Rect *)((Ptr)window + 16);
+    OffsetRect(&portRect, -bounds.left, -bounds.top);
+    CreateNewWindow(kDocumentWindowClass, kWindowNoAttributes, &portRect,
+                    &carbonWindow);
+    
+    result = GrowWindow(carbonWindow, startPt, bBox);
+    
+    DisposeWindow(carbonWindow);
+    
+    *resultPtr = result;
+    regs[8+7] += 12; /*pop*/
+    
     (void)trapWord;
 }
 
@@ -572,6 +608,7 @@ Boolean InitDisplay(void)
     /* let GetCursor pass through */
 
     tbTrapTable[_DragGrayRgn    & 0x3FF]    = trapDragGrayRgn;
+    tbTrapTable[_GrowWindow     & 0x3FF]    = trapGrowWindow;
     
     tbTrapTable[_DrawMenuBar    & 0x3FF]    = trapMenuDrawing;
     tbTrapTable[_MenuSelect     & 0x3FF]    = trapMenuDrawing;

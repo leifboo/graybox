@@ -48,8 +48,11 @@ static void handleOSEvent(EventRecord *theEvent) {
     if ((theEvent->message >> 24) & suspendResumeMessage) {
         inBackground = !(theEvent->message & 1);
         
-        /* make sure menus are always on top */
-        if (!inBackground) {
+        if (inBackground) {
+            HideWindow(menusWindow);
+        } else {
+            ShowWindow(menusWindow);
+            /* make sure menus are always on top */
             SelectWindow(menusWindow);
         }
     }
