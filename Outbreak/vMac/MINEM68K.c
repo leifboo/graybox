@@ -80,6 +80,15 @@ LOCALFUNC ui5b get_word(CPTR addr)
 	ui3p m;
 	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
 	
+	if (addr == 0xBAA) /* MBarHeight */ {
+        /*
+         * Make sure the classic menu bar eclipses the Carbon one.
+         * Simply writing to this low mem global only partially works:
+         * it seems to be frequently reset to 20.
+         */
+	    return GetMBarHeight();
+	}
+	
 	if (ba != nullpr) {
 		m = (addr & MemBankAddrMask) + ba;
 		w = do_get_mem_word(m);

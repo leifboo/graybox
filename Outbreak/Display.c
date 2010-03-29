@@ -78,7 +78,6 @@ static void initWindows(void)
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &windowsWindow);
     SetWindowGroup(windowsWindow, GetWindowGroupOfClass(kDocumentWindowClass));
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &menusWindow);
-    SetWindowGroup(menusWindow, GetWindowGroupOfClass(kFloatingWindowClass));
     CreateNewWindow(kOverlayWindowClass, kWindowNoAttributes, &r, &debugWindow);
     SetWindowGroup(debugWindow, GetWindowGroupOfClass(kFloatingWindowClass));
     windowsPort = GetWindowPort(windowsWindow);
@@ -88,10 +87,6 @@ static void initWindows(void)
     CreateCGContextForPort(windowsPort, &deskGC);
     CreateCGContextForPort(menusPort, &menusGC);
     CreateCGContextForPort(debugPort, &debugGC);
-    
-    /* Make sure the classic menu bar eclipses the Carbon one. */
-    SetWindowGroupLevel(GetWindowGroupOfClass(kFloatingWindowClass),
-                        kCGMainMenuWindowLevel);
     
     //CGContextClearRect(debugGC, db);
     
@@ -354,7 +349,6 @@ static void trapPaintOne(UInt16 trapWord, UInt32 regs[16]) {
 static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
 {
     static int once = 1;
-    SInt16 *mBarHeightPtr;
     
     if (once) {
         ShowWindow(windowsWindow);
@@ -365,10 +359,6 @@ static void trapMenuDrawing(UInt16 trapWord, UInt32 regs[16])
         
         once = 0;
     }
-    
-    /* Make sure the classic menu bar eclipses the Carbon one. */
-    mBarHeightPtr = (SInt16 *)get_real_address(0xBAA);
-    *mBarHeightPtr = mBarHeight;
     
     if (inMenuManager) {
         /* Intercepting internal calls to HiliteMenu causes a system error.
@@ -496,11 +486,11 @@ static void trapPenNormal(UInt16 trapWord, UInt32 regs[16]) {
 
 static void trapRect(UInt16 trapWord, UInt32 regs[16]) {
     Ptr sp;
-    Rect *r, portRect;
+    Rect r, portRect;
     RgnHandle rgn;
     
     sp = (Ptr)get_real_address(regs[8+7]);
-    r = (Rect *)get_real_address(*(CPTR *)(sp + 0));
+    r = *(Rect *)get_real_address(*(CPTR *)(sp + 0));
     
     if (inMenuManager) {
         /*
@@ -509,7 +499,35 @@ static void trapRect(UInt16 trapWord, UInt32 regs[16]) {
          * trapLines().
          *
          */
-        UnionRect(&dirtyRect, r, &dirtyRect);
+        switch (trapWord) {
+        case _InverRect:
+            if (r.left == 350 && r.right == 531) {
+                /*
+                 * XXX:  Ugly hack!  The custom MDEF for MacDraw's "Lines"
+                 * menu relies upon the {clip/vis}Rgn of the current port
+                 * to clip its InvertRect() operations.  We should track
+                 * down these regions, use HandleToRgn() to convert them,
+                 * and then use them to trim our own drawing accordingly.
+                 */ 
+                r.right = 423;
+            }
+            break;
+        case _EraseRoundRect:
+        case _FrameRoundRect:
+            if (r.left == -1 && r.top == -1 &&
+                r.right == -1 && r.bottom == -1) {
+                /*
+                 * XXX:  I don't know why, but these empty calls
+                 * draw the menu bar.
+                 */
+                r.left = 0;
+                r.top = 0;
+                r.right = vScreenBitMap.bounds.right;
+                r.bottom = mBarHeight;
+             }
+             break;
+        }
+        UnionRect(&dirtyRect, &r, &dirtyRect);
     
     } else if (inPaintOne) {
         /*
@@ -519,7 +537,7 @@ static void trapRect(UInt16 trapWord, UInt32 regs[16]) {
          * and subtract them from 'deskRgn'.
          */
         rgn = NewRgn();
-        RectRgn(rgn, r);
+        RectRgn(rgn, &r);
         UnionRgn(windowsRgn, rgn, windowsRgn);
         DiffRgn(deskRgn, rgn, deskRgn);
         DisposeRgn(rgn);
@@ -562,6 +580,8 @@ Boolean InitDisplay(void)
     tbTrapTable[_FrameRect      & 0x3FF]    = trapRect;
     tbTrapTable[_PaintRect      & 0x3FF]    = trapRect;
     tbTrapTable[_EraseRect      & 0x3FF]    = trapRect;
+    tbTrapTable[_EraseRoundRect & 0x3FF]    = trapRect;
+    tbTrapTable[_FrameRoundRect & 0x3FF]    = trapRect;
     tbTrapTable[_InverRect      & 0x3FF]    = trapRect;
     tbTrapTable[_MoveTo         & 0x3FF]    = trapLines;
     tbTrapTable[_LineTo         & 0x3FF]    = trapLines;
