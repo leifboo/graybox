@@ -44,6 +44,55 @@ static int inMenuManager, inPaintOne;
 static long debugColor;
 
 
+
+/*
+ * event handling
+ */
+
+static EventTypeSpec windowEvents[] = {
+    { kEventClassWindow, kEventWindowPaint }
+};
+
+
+static void UpdateDisplay(WindowPtr window);
+
+
+static DEFINE_API(OSStatus) windowEventHandler(
+    EventHandlerCallRef eventHandlerCallRef,
+    EventRef eventRef,
+    void *userData)
+{
+    WindowRef window;
+    UInt32 eventClass, eventKind;
+
+    GetEventParameter(eventRef,
+                      kEventParamDirectObject,
+                      typeWindowRef,
+                      NULL,
+                      sizeof(window),
+                      NULL,
+                      &window);
+    eventClass = GetEventClass(eventRef);
+    eventKind = GetEventKind(eventRef);
+        
+    switch (eventClass) {
+    case kEventClassWindow: 
+        switch (eventKind) {
+        case kEventWindowPaint:
+            CallNextEventHandler(eventHandlerCallRef, eventRef);
+            UpdateDisplay(window);
+            return noErr;
+        }
+        break;
+   }
+   
+   (void)userData;
+
+   return eventNotHandledErr;
+}
+
+
+
 /*
  * drawing routines
  */
@@ -101,6 +150,19 @@ static void initWindows(void)
     windowsRgn = NewRgn();
     
     //ForeColor(debugColor = redColor);
+    
+    InstallWindowEventHandler(menusWindow,
+                              NewEventHandlerUPP(windowEventHandler),
+                              GetEventTypeCount(windowEvents),
+                              windowEvents,
+                              NULL,
+                              NULL);
+    InstallWindowEventHandler(windowsWindow,
+                              NewEventHandlerUPP(windowEventHandler),
+                              GetEventTypeCount(windowEvents),
+                              windowEvents,
+                              NULL,
+                              NULL);
 }
 
 
@@ -214,6 +276,35 @@ void WriteSmallFrameBuffer(UInt32 addr, UInt32 data, Boolean byteSize)
     r.right = h + 16;
     r.bottom = v + 1;
     UnionRect(&dirtyRect, &r, &dirtyRect);
+}
+
+
+static void UpdateDisplay(WindowPtr window)
+{
+    /*
+     * An update event has occurred; redraw one of our windows.
+     *
+     * Ordinarily, the OS X window server wastes gobs of memory preserving
+     * everything we have drawn in a window buffer.  AFAICT, this routine
+     * is called only when a window is shown after being hidden (e.g.,
+     * our menu bar after switching, or all windows after hide/show app),
+     * or after a change to the "Display" preferences.
+     */
+
+    CGrafPtr port, oldPort;
+
+    port = GetWindowPort(window);
+    QDSwapPort(port, &oldPort);
+    
+    if (window == menusWindow) {
+        SetRect(&dirtyRect, 0, 0, vScreenBitMap.bounds.right, mBarHeight);
+        FlushDisplay();
+    } else if (window == windowsWindow) {
+        dirtyRect = vScreenBitMap.bounds;
+        FlushDisplay();
+    }
+    
+    SetPort(oldPort);
 }
 
 
