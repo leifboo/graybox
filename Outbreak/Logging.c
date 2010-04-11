@@ -17,6 +17,8 @@
 
 #include "Logging.h"
 
+#if LOGGING
+
 #include "vMac.h"
 
 #include <Traps.h>
@@ -1382,3 +1384,15 @@ void increaseIndent(void) {
 void decreaseIndent(void) {
     --indent;
 }
+
+
+#else /* !LOGGING */
+
+void fprintlog(const char *format, ...) { (void)format; }
+void logTrap(UInt16 trapWord, UInt32 regs[16]) { (void)trapWord; (void)regs; }
+void logOSErr(OSErr err, StringPtr ioNamePtr) { (void)err; (void)ioNamePtr; }
+void closeLog(void) {}
+void increaseIndent(void) {}
+void decreaseIndent(void) {}
+
+#endif /* LOGGING */
