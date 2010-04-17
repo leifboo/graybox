@@ -184,8 +184,9 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     ParamBlock pb;
     StringPtr ioNamePtr;
     OSErr err;
+    long volDirID;
     
-    logTrap(trapWord, regs);
+    /*logTrap(trapWord, regs);*/
     
     hfs = (trapWord & hfsTrpMask) != 0;
     selectCode = trapWord & ~(asyncTrpMask | hfsTrpMask);
@@ -271,7 +272,7 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMGetVolInfo:
         pb.hpb.volumeParam.ioVRefNum = parmBlkPtr->volumeParam.ioVRefNum;
         pb.hpb.volumeParam.ioVolIndex = parmBlkPtr->volumeParam.ioVolIndex;
-        err = resolveVRefNum(&pb.hpb.volumeParam.ioVRefNum, 0);
+        err = resolveVRefNum(&pb.hpb.volumeParam.ioVRefNum, &volDirID);
         if (err != noErr)
             goto leave;
         break;
@@ -361,6 +362,18 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
         break;
 
     case kFSMGetVolInfo:
+        if (pb.hpb.volumeParam.ioNamePtr) {
+            /* Replace volume name with folder name. */
+            CInfoPBRec cInfoPB;
+            
+            BlockZero(&cInfoPB, sizeof(cInfoPB));
+            cInfoPB.dirInfo.ioNamePtr = pb.hpb.volumeParam.ioNamePtr;
+            cInfoPB.dirInfo.ioFDirIndex = -1;
+            cInfoPB.dirInfo.ioVRefNum = pb.hpb.volumeParam.ioVRefNum;
+            cInfoPB.dirInfo.ioDrDirID = volDirID;
+            PBGetCatInfoSync(&cInfoPB);
+        }
+        
         /*
          * IM IV-129: "If a working directory reference number is
          * passed in ioVRefNum (or if the default directory is a

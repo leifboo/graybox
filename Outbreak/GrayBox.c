@@ -21,6 +21,7 @@
 #include "EventMgr.h"
 #include "Gateway.h"
 #include "Patching.h"
+#include "ScrapMgr.h"
 #include "vMac.h"
 
 
@@ -170,6 +171,7 @@ int main(void)
     _(InitEvents());
     _(InitMisc());
     _(InitMFS());
+    _(InitScrap());
     
     GBPatchROM();
     
