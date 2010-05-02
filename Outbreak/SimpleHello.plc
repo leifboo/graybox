@@ -7,13 +7,13 @@
  */
 
 // Change this to your bundle identifier string
-#define kBundleIdentifier "com.metrowerks.stationery"
+#define kBundleIdentifier "com.apple.macdraw"
 
 // Change this to your short version string
-#define kBundleShortVersion __OUTPUT_FILENAME__ " version 1.0"
+#define kBundleShortVersion "1.9.5"
 
 // Change this to the string to display in the Finder's Get Info window
-#define kBundleGetInfo kBundleShortVersion ", Copyright © 2002-2003 by Metrowerks Corporation.  All rights reserved."
+#define kBundleGetInfo kBundleShortVersion ", Copyright © 1985, 1987 Apple Computer, Inc.  All rights reserved."
 
 plist
 {
@@ -33,6 +33,21 @@ plist
 		key "CFBundleDevelopmentRegion" value string "English"
 		key "CFBundleInfoDictionaryVersion" value string "6.0"
 		key "LSRequiresCarbon" value boolean true
+		
+		key "CFBundleIconFile" value string "AppIcon.icns"
+		
+		key "CFBundleDocumentTypes" value array [
+		    dictionary {
+		        key "CFBundleTypeIconFile" value string "DocIcon.icns"
+		        key "CFBundleTypeName" value string "MacDraw Document"
+		        key "CFBundleTypeOSTypes" value array [
+		            string "DRWG"
+		        ]
+		        key "CFBundleTypeExtensions" value array [
+		            string "*"
+		        ]
+		    }
+		]
 	}
 }
 

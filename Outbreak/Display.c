@@ -100,7 +100,8 @@ static DEFINE_API(OSStatus) windowEventHandler(
 static CGRect CGRectFromQDRect(Rect *r)
 {
     /* XXX: How to map from QD origin to CG origin? */
-    return CGRectMake(r->left, 1200 - r->bottom, r->right - r->left, r->bottom - r->top);
+    return CGRectMake(r->left, screenBitMap.bounds.bottom - r->bottom,
+                      r->right - r->left, r->bottom - r->top);
 }
 
 
