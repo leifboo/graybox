@@ -19,6 +19,7 @@
 
 #include "Display.h"
 #include "EventMgr.h"
+#include "FileMgr.h"
 #include "Gateway.h"
 #include "Patching.h"
 #include "ScrapMgr.h"
@@ -153,9 +154,6 @@ static Boolean InitMemory(void)
 }
 
 
-Boolean InitMFS(void); /* XXX: temporary */
-
-
 int main(void)
 {
 #define _(e) if (!(e)) goto leave
@@ -170,7 +168,7 @@ int main(void)
     _(InitMemory());
     _(InitEvents());
     _(InitMisc());
-    _(InitMFS());
+    _(InitFiles());
     _(InitScrap());
     
     GBPatchROM();
