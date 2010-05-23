@@ -43,6 +43,7 @@ typedef union ParamBlock {
     HParamBlockRec hpb;
     WDPBRec wdPBRec;
     CInfoPBRec cInfoPBRec;
+    FCBPBRec fcbPBRec;
 } ParamBlock;
 
 
@@ -56,6 +57,7 @@ typedef struct WDRec {
 static WDRec *wd;
 static short nWD;
 static short defaultVolume;
+static long defaultDirectory;
 
 
 
@@ -63,13 +65,17 @@ static OSErr resolveWDRefNum(short *vRefNumPtr, long *dirIDPtr) {
     short vRefNum, wdIndex;
     
     vRefNum = *vRefNumPtr;
-    if (vRefNum == 0)
+    if (vRefNum == 0) {
         vRefNum = defaultVolume;
+        if (defaultDirectory && dirIDPtr)
+            *dirIDPtr = defaultDirectory;
+    }
     
     if (vRefNum < 0) {
         wdIndex = vRefNum - wdMagic;
         if (wdIndex < 0 || nWD <= wdIndex) {
             /* volume ID */
+            *vRefNumPtr = vRefNum;
             return noErr;
         }
     } else if (0 < vRefNum && vRefNum <= nDrives) {
@@ -116,9 +122,11 @@ static OSErr MountVol(ParmBlkPtr paramBlock) {
 
 
 
-static OSErr GetVol(ParmBlkPtr paramBlock) {
+static OSErr GetVol(ParmBlkPtr paramBlock, Boolean hfs) {
     StringPtr ioNamePtr;
+    OSErr err;
     
+    err = noErr;
     ioNamePtr = paramBlock->ioParam.ioNamePtr;
     if (ioNamePtr) {
         /* XXX */
@@ -128,19 +136,49 @@ static OSErr GetVol(ParmBlkPtr paramBlock) {
         ioNamePtr[2] = 'o';
         ioNamePtr[3] = 'o';
     }
-    paramBlock->ioParam.ioVRefNum = defaultVolume;
-    fprintlog("    ioVRefNum = %d\n",
-              paramBlock->ioParam.ioVRefNum);
-    return paramBlock->ioParam.ioResult = noErr;
+    if (hfs) {
+        WDPBPtr wdPBPtr = (WDPBPtr)paramBlock;
+        wdPBPtr->ioVRefNum = defaultVolume;
+        wdPBPtr->ioWDProcID = 0; /* XXX */
+        wdPBPtr->ioWDVRefNum = defaultVolume;
+        if (defaultDirectory) {
+            /* PBHSetVol was called */
+            wdPBPtr->ioWDDirID = defaultDirectory;
+        } else {
+            wdPBPtr->ioWDDirID = 0;
+            err = resolveWDRefNum(&wdPBPtr->ioWDVRefNum, &wdPBPtr->ioWDDirID);
+        }
+        fprintlog("    err = %d\n"
+                  "    ioVRefNum = %d\n"
+                  "    ioWDVRefNum = %d\n"
+                  "    ioWDDirID = %d\n",
+                  err,
+                  wdPBPtr->ioVRefNum,
+                  wdPBPtr->ioWDVRefNum,
+                  wdPBPtr->ioWDDirID
+                  );
+    } else {
+        paramBlock->ioParam.ioVRefNum = defaultVolume;
+        fprintlog("    ioVRefNum = %d\n",
+                  paramBlock->ioParam.ioVRefNum);
+    }
+    return paramBlock->ioParam.ioResult = err;
 }
 
 
 
-static OSErr SetVol(ParmBlkPtr paramBlock) {
+static OSErr SetVol(ParmBlkPtr paramBlock, Boolean hfs) {
+    WDPBPtr wdPBPtr = (WDPBPtr)paramBlock;
     StringPtr ioNamePtr;
+    OSErr err;
     
+    err = noErr;
     fprintlog("    ioVRefNum = %d\n",
               paramBlock->ioParam.ioVRefNum);
+    if (hfs) {
+        fprintlog("    ioWDDirID = %d\n",
+                  wdPBPtr->ioWDDirID);
+    }
     ioNamePtr = paramBlock->ioParam.ioNamePtr;
     if (ioNamePtr) {
         /* XXX */
@@ -148,7 +186,19 @@ static OSErr SetVol(ParmBlkPtr paramBlock) {
         fprintlog("    ioNamePtr = %.*s\n",
                   ioNamePtr[0], (char *)ioNamePtr + 1);
     } else if (paramBlock->ioParam.ioVRefNum != 0) {
-        defaultVolume = paramBlock->ioParam.ioVRefNum;
+        if (hfs) {
+            short vRefNum; long dirID;
+            vRefNum = paramBlock->ioParam.ioVRefNum;
+            dirID = wdPBPtr->ioWDDirID;
+            err = resolveWDRefNum(&vRefNum, &dirID);
+            if (err == noErr) {
+                defaultVolume = vRefNum;
+                defaultDirectory = dirID;
+            }
+        } else {
+            defaultVolume = paramBlock->ioParam.ioVRefNum;
+            defaultDirectory = 0;
+        }
     } else {
         /*
          * Sometimes, 'ioVRefNum' is zero.
@@ -156,7 +206,7 @@ static OSErr SetVol(ParmBlkPtr paramBlock) {
          * to the default volume?
          */
     }
-    return paramBlock->ioParam.ioResult = noErr;
+    return paramBlock->ioParam.ioResult = err;
 }
 
 
@@ -295,8 +345,8 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMGetEOF:        err = PBGetEOFSync(&pb.pb);         break;
     case kFSMSetEOF:        err = PBSetEOFSync(&pb.pb);         break;
     case kFSMFlushVol:      err = PBFlushVolSync(&pb.pb);       break;
-    case kFSMGetVol:        err = GetVol(&pb.pb);               break;
-    case kFSMSetVol:        err = SetVol(&pb.pb);               break;
+    case kFSMGetVol:        err = GetVol(&pb.pb, hfs);          break;
+    case kFSMSetVol:        err = SetVol(&pb.pb, hfs);          break;
     case kFSMEject:         err = NoOp(&pb.pb);                 break;
     case kFSMGetFPos:       err = PBGetFPosSync(&pb.pb);        break;
 
@@ -305,6 +355,8 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
         break;
     }
     
+    parmBlkPtr->ioParam.ioResult = pb.pb.ioParam.ioResult;
+    
     if (err != noErr)
         goto leave;
     
@@ -312,8 +364,6 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     /*
      * copy out result
      */
-    
-    parmBlkPtr->ioParam.ioResult = pb.pb.ioParam.ioResult;
     
     switch (selectCode) {
     case kFSMOpen:
@@ -338,112 +388,103 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     
     case kFSMCreate:
     case kFSMDelete:
-    case kFSMGetFileInfo:
     case kFSMSetFileInfo:
-        parmBlkPtr->fileParam.ioFRefNum = pb.hpb.fileParam.ioFRefNum;
-        parmBlkPtr->fileParam.ioFlAttrib = pb.hpb.fileParam.ioFlAttrib;
-        parmBlkPtr->fileParam.ioFlVersNum = 0 /*hParamBlock.fileParam.ioFlVersNum*/ ;
-        parmBlkPtr->fileParam.ioFlFndrInfo = pb.hpb.fileParam.ioFlFndrInfo;
-        parmBlkPtr->fileParam.ioFlNum = 0; /*???*/;
-        parmBlkPtr->fileParam.ioFlStBlk = pb.hpb.fileParam.ioFlStBlk;
-        parmBlkPtr->fileParam.ioFlLgLen = pb.hpb.fileParam.ioFlLgLen;
-        parmBlkPtr->fileParam.ioFlPyLen = pb.hpb.fileParam.ioFlPyLen;
-        parmBlkPtr->fileParam.ioFlRStBlk = pb.hpb.fileParam.ioFlRStBlk;
-        parmBlkPtr->fileParam.ioFlRLgLen = pb.hpb.fileParam.ioFlRLgLen;
-        parmBlkPtr->fileParam.ioFlRPyLen = pb.hpb.fileParam.ioFlRPyLen;
-        parmBlkPtr->fileParam.ioFlCrDat = pb.hpb.fileParam.ioFlCrDat;
-        parmBlkPtr->fileParam.ioFlMdDat = pb.hpb.fileParam.ioFlMdDat;
+        break;
+
+    case kFSMGetFileInfo:
+        if (hfs) {
+            StringPtr ioNamePtr = parmBlkPtr->fileParam.ioNamePtr;
+            BlockMove(&pb, parmBlkPtr, sizeof(HParamBlockRec));
+            parmBlkPtr->fileParam.ioNamePtr = ioNamePtr;
+        } else {
+            parmBlkPtr->fileParam.ioFRefNum = pb.hpb.fileParam.ioFRefNum;
+            parmBlkPtr->fileParam.ioFlAttrib = pb.hpb.fileParam.ioFlAttrib;
+            parmBlkPtr->fileParam.ioFlVersNum = 0 /*hParamBlock.fileParam.ioFlVersNum*/ ;
+            parmBlkPtr->fileParam.ioFlFndrInfo = pb.hpb.fileParam.ioFlFndrInfo;
+            parmBlkPtr->fileParam.ioFlNum = 0; /*???*/;
+            parmBlkPtr->fileParam.ioFlStBlk = pb.hpb.fileParam.ioFlStBlk;
+            parmBlkPtr->fileParam.ioFlLgLen = pb.hpb.fileParam.ioFlLgLen;
+            parmBlkPtr->fileParam.ioFlPyLen = pb.hpb.fileParam.ioFlPyLen;
+            parmBlkPtr->fileParam.ioFlRStBlk = pb.hpb.fileParam.ioFlRStBlk;
+            parmBlkPtr->fileParam.ioFlRLgLen = pb.hpb.fileParam.ioFlRLgLen;
+            parmBlkPtr->fileParam.ioFlRPyLen = pb.hpb.fileParam.ioFlRPyLen;
+            parmBlkPtr->fileParam.ioFlCrDat = pb.hpb.fileParam.ioFlCrDat;
+            parmBlkPtr->fileParam.ioFlMdDat = pb.hpb.fileParam.ioFlMdDat;
+        }
         break;
 
     case kFSMGetVolInfo:
-        if (pb.hpb.volumeParam.ioNamePtr) {
-            /* Replace volume name with folder name. */
-            CInfoPBRec cInfoPB;
-            
-            BlockZero(&cInfoPB, sizeof(cInfoPB));
-            cInfoPB.dirInfo.ioNamePtr = pb.hpb.volumeParam.ioNamePtr;
-            cInfoPB.dirInfo.ioFDirIndex = -1;
-            cInfoPB.dirInfo.ioVRefNum = pb.hpb.volumeParam.ioVRefNum;
-            cInfoPB.dirInfo.ioDrDirID = volDirID;
-            PBGetCatInfoSync(&cInfoPB);
-        }
-        
-        /*
-         * IM IV-129: "If a working directory reference number is
-         * passed in ioVRefNum (or if the default directory is a
-         * subdirectory), ...the volume reference number won't be
-         * returned; ioVRefNum will still contain the working
-         * directory reference number."
-         */
-        if (parmBlkPtr->volumeParam.ioVRefNum < 0) {
-            /* working directory reference number (i.e., pseudo-volume);
-               don't let the caller see behind the curtain */
-        } else if (parmBlkPtr->volumeParam.ioVRefNum == 0) {
-            parmBlkPtr->volumeParam.ioVRefNum = defaultVolume;
-        } else {
-            /* drive number passed in; convert to volume ref num */
-            parmBlkPtr->volumeParam.ioVRefNum = bootVRefNum; /* XXX */
-        }
-        
-        parmBlkPtr->volumeParam.ioVCrDate = pb.hpb.volumeParam.ioVCrDate;
-        parmBlkPtr->volumeParam.ioVLsBkUp = 0; /*XXX: ???*/
-        parmBlkPtr->volumeParam.ioVAtrb = pb.hpb.volumeParam.ioVAtrb;
-        parmBlkPtr->volumeParam.ioVNmFls = pb.hpb.volumeParam.ioVNmFls;
-        parmBlkPtr->volumeParam.ioVDirSt = 0; /*XXX: ???*/
-        parmBlkPtr->volumeParam.ioVBlLn = 0; /*XXX: ???*/
-        
-        /*
-         * IM IV-130: "Warning: IOVNmAlBlks and ioVFrBlks [sic],
-         * which are actually unsigned integers, are clipped to
-         * 31744 ($7C00) regardless of the size of the volume."
-         */
-        
-        if (pb.hpb.volumeParam.ioVNmAlBlks < 0x7C00) {
-            parmBlkPtr->volumeParam.ioVNmAlBlks = pb.hpb.volumeParam.ioVNmAlBlks;
-        } else {
-            parmBlkPtr->volumeParam.ioVNmAlBlks = 0x7C00;
-        }
-        
-        /* header: "for compatibilty ioVAlBlkSiz is <= $0000FE00 (65,024)" */
-        if (pb.hpb.volumeParam.ioVAlBlkSiz < 0xFE00) {
-            parmBlkPtr->volumeParam.ioVAlBlkSiz = pb.hpb.volumeParam.ioVAlBlkSiz;
-        } else {
-            parmBlkPtr->volumeParam.ioVAlBlkSiz = 0xFE00;
-        }
-        
-        /*
-         * Header: "for compatibilty ioVNmAlBlks * ioVAlBlkSiz <= 2 GB".
-         * Indeed, 0x7C00 * 0xFE00 == 0x7b080000.
-         */
-        
-        parmBlkPtr->volumeParam.ioVClpSiz = pb.hpb.volumeParam.ioVClpSiz;
-        parmBlkPtr->volumeParam.ioAlBlSt = pb.hpb.volumeParam.ioAlBlSt;
-        parmBlkPtr->volumeParam.ioVNxtFNum = 0; /*XXX: ???*/
-        
-        if (pb.hpb.volumeParam.ioVFrBlk < 0x7C00) {
-            parmBlkPtr->volumeParam.ioVFrBlk = pb.hpb.volumeParam.ioVFrBlk;
-        } else {
-            parmBlkPtr->volumeParam.ioVFrBlk = 0x7C00;
-        }
-        
         if (hfs) {
-            HParmBlkPtr hParmBlkPtr = (HParmBlkPtr)parmBlkPtr;
-            int i;
+            StringPtr ioNamePtr = parmBlkPtr->volumeParam.ioNamePtr;
+            BlockMove(&pb, parmBlkPtr, sizeof(HParamBlockRec));
+            parmBlkPtr->volumeParam.ioNamePtr = ioNamePtr;
             
-            hParmBlkPtr->volumeParam.ioVSigWord = 0;
-            hParmBlkPtr->volumeParam.ioVDrvInfo = 0;
-            hParmBlkPtr->volumeParam.ioVDRefNum = 0;
-            hParmBlkPtr->volumeParam.ioVFSID = 0;
-            hParmBlkPtr->volumeParam.ioVBkUp = 0;
-            hParmBlkPtr->volumeParam.ioVSeqNum = 0;
-            hParmBlkPtr->volumeParam.ioVWrCnt = 0;
-            hParmBlkPtr->volumeParam.ioVFilCnt = 0;
-            hParmBlkPtr->volumeParam.ioVDirCnt = 0;
+            if (pb.hpb.volumeParam.ioVRefNum == bootVRefNum) {
+                HParmBlkPtr hParmBlkPtr = (HParmBlkPtr)parmBlkPtr;
+                int i;
+                
+                hParmBlkPtr->volumeParam.ioVFndrInfo[0] = sysDirID;
+                for (i = 1; i < 8; ++i)
+                    hParmBlkPtr->volumeParam.ioVFndrInfo[i] = 0;
+            }
+        } else {
+            /*
+             * IM IV-129: "If a working directory reference number is
+             * passed in ioVRefNum (or if the default directory is a
+             * subdirectory), ...the volume reference number won't be
+             * returned; ioVRefNum will still contain the working
+             * directory reference number."
+             */
+            if (parmBlkPtr->volumeParam.ioVRefNum < 0) {
+                /* working directory reference number (i.e., pseudo-volume);
+                   don't let the caller see behind the curtain */
+            } else if (parmBlkPtr->volumeParam.ioVRefNum == 0) {
+                parmBlkPtr->volumeParam.ioVRefNum = defaultVolume;
+            } else {
+                /* drive number passed in; convert to volume ref num */
+                parmBlkPtr->volumeParam.ioVRefNum = bootVRefNum; /* XXX */
+            }
             
-            hParmBlkPtr->volumeParam.ioVFndrInfo[0] = sysDirID;
+            parmBlkPtr->volumeParam.ioVCrDate = pb.hpb.volumeParam.ioVCrDate;
+            parmBlkPtr->volumeParam.ioVLsBkUp = 0; /*XXX: ???*/
+            parmBlkPtr->volumeParam.ioVAtrb = pb.hpb.volumeParam.ioVAtrb;
+            parmBlkPtr->volumeParam.ioVNmFls = pb.hpb.volumeParam.ioVNmFls;
+            parmBlkPtr->volumeParam.ioVDirSt = 0; /*XXX: ???*/
+            parmBlkPtr->volumeParam.ioVBlLn = 0; /*XXX: ???*/
             
-            for (i = 1; i < 8; ++i)
-                hParmBlkPtr->volumeParam.ioVFndrInfo[i] = 0;
+            /*
+             * IM IV-130: "Warning: IOVNmAlBlks and ioVFrBlks [sic],
+             * which are actually unsigned integers, are clipped to
+             * 31744 ($7C00) regardless of the size of the volume."
+             */
+            
+            if (pb.hpb.volumeParam.ioVNmAlBlks < 0x7C00) {
+                parmBlkPtr->volumeParam.ioVNmAlBlks = pb.hpb.volumeParam.ioVNmAlBlks;
+            } else {
+                parmBlkPtr->volumeParam.ioVNmAlBlks = 0x7C00;
+            }
+            
+            /* header: "for compatibilty ioVAlBlkSiz is <= $0000FE00 (65,024)" */
+            if (pb.hpb.volumeParam.ioVAlBlkSiz < 0xFE00) {
+                parmBlkPtr->volumeParam.ioVAlBlkSiz = pb.hpb.volumeParam.ioVAlBlkSiz;
+            } else {
+                parmBlkPtr->volumeParam.ioVAlBlkSiz = 0xFE00;
+            }
+            
+            /*
+             * Header: "for compatibilty ioVNmAlBlks * ioVAlBlkSiz <= 2 GB".
+             * Indeed, 0x7C00 * 0xFE00 == 0x7b080000.
+             */
+            
+            parmBlkPtr->volumeParam.ioVClpSiz = pb.hpb.volumeParam.ioVClpSiz;
+            parmBlkPtr->volumeParam.ioAlBlSt = pb.hpb.volumeParam.ioAlBlSt;
+            parmBlkPtr->volumeParam.ioVNxtFNum = 0; /*XXX: ???*/
+            
+            if (pb.hpb.volumeParam.ioVFrBlk < 0x7C00) {
+                parmBlkPtr->volumeParam.ioVFrBlk = pb.hpb.volumeParam.ioVFrBlk;
+            } else {
+                parmBlkPtr->volumeParam.ioVFrBlk = 0x7C00;
+            }
         }
         
         break;
@@ -463,6 +504,7 @@ static void trapHFSDispatch(UInt16 trapWord, UInt32 regs[16]) {
     ParamBlock pb, *parmBlkPtr;
     WDPBPtr wdPBPtr;
     CInfoPBPtr cInfoPBPtr;
+    FCBPBPtr fcbPBPtr;
     StringPtr ioNamePtr;
     
     logTrap(trapWord, regs);
@@ -476,6 +518,7 @@ static void trapHFSDispatch(UInt16 trapWord, UInt32 regs[16]) {
     
     wdPBPtr = &parmBlkPtr->wdPBRec; /* direct */
     cInfoPBPtr = &pb.cInfoPBRec;
+    fcbPBPtr = &pb.fcbPBRec;
     
     ioNamePtr = parmBlkPtr->hpb.ioParam.ioNamePtr;
     if (ioNamePtr) {
@@ -565,7 +608,29 @@ static void trapHFSDispatch(UInt16 trapWord, UInt32 regs[16]) {
         break;
     
     case kFSMGetWDInfo:
-        fprintlog("    @@@ kFSMGetWDInfo\n");
+        fprintlog("    @@@ kFSMGetWDInfo\n"
+                  "            ioNamePtr: %p\n"
+                  "            ioVRefNum: %d\n"
+                  "            ioWDIndex: %d\n"
+                  "            ioWDProcID: %lx\n",
+                  wdPBPtr->ioNamePtr,
+                  wdPBPtr->ioVRefNum,
+                  wdPBPtr->ioWDIndex,
+                  wdPBPtr->ioWDProcID
+                  );
+        /* XXX: just handle the common case */
+        wdPBPtr->ioWDVRefNum = wdPBPtr->ioVRefNum;
+        err = resolveWDRefNum(&wdPBPtr->ioWDVRefNum, &wdPBPtr->ioWDDirID);
+        fprintlog("        err = %d; %d:%d\n", err, wdPBPtr->ioWDVRefNum, wdPBPtr->ioWDDirID);
+        break;
+    
+    case kFSMGetFCBInfo:
+        fprintlog("    @@@ kFSMGetFCBInfo\n");
+        err = PBGetFCBInfoSync(fcbPBPtr);
+        if (err == noErr) {
+            /* XXX: for now */
+            BlockMove(fcbPBPtr, parmBlkPtr, sizeof(FCBPBRec));
+        }
         break;
     
     case kFSMGetCatInfo:
@@ -585,9 +650,29 @@ static void trapHFSDispatch(UInt16 trapWord, UInt32 regs[16]) {
     }
     
  leave:
+    if (err != noErr)
+        logOSErr(err, ioNamePtr);
     regs[0] = parmBlkPtr->pb.ioParam.ioResult = err;
     m68k_test_d0();
     (void)trapWord;
+}
+
+
+static void defaultToDocumentsFolder(void) {
+    /* Force Standard File to default to the "Documents" folder. */
+    long *CurDirStorePtr = (long *)get_real_address(0x398);
+    short *SfSaveDiskPtr = (short *)get_real_address(0x214);
+    short vRefNum;
+    long dirID;
+    OSErr err;
+    
+    err = FindFolder(kUserDomain, kDocumentsFolderType, kDontCreateFolder,
+                     &vRefNum, &dirID);
+    if (err == noErr) {
+        *SfSaveDiskPtr = 0;
+        *CurDirStorePtr = dirID;
+        /* XXX: Where does vRefNum go? */
+    }
 }
 
 
@@ -602,20 +687,11 @@ static void trapInitFs(UInt16 trapWord, UInt32 regs[16]) {
     Ptr *fcbSPtrPtr = (Ptr *)get_real_address(0x34E);
     short *bootDrivePtr = (short *)get_real_address(0x210);
     unsigned int i;
-#if 0
-    OSErr err;
-#endif
     
     fprintlog("InitFs\n");
     
     /* HFS present */
     *fsFcbLenPtr = 42;
-    
-#if 0
-    err = FindFolder(kUserDomain, kDocumentsFolderType, kDontCreateFolder,
-                     &wd[1].vRefNum, &wd[1].dirID);
-    fprintlog("    FindFolder: %d %d %ld\n", err, wd[1].vRefNum, wd[1].dirID);
-#endif
     
     GetGatewayFMDataStructs(&vDrvQ, &drvQ, &vVCBQ, &vcbQ);
     
@@ -671,6 +747,8 @@ static void trapInitFs(UInt16 trapWord, UInt32 regs[16]) {
     *fcbSPtrPtr = 0;
     
     *bootDrivePtr = 1;
+    
+    defaultToDocumentsFolder();
     
     (void)trapWord; (void)regs;
 }

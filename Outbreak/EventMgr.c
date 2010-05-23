@@ -52,6 +52,7 @@ static void handleOSEvent(EventRecord *theEvent) {
             HideWindow(menusWindow);
         } else {
             ShowWindow(menusWindow);
+            SelectWindow(windowsWindow); /* 10.3 */
             /* make sure menus are always on top */
             SelectWindow(menusWindow);
         }
@@ -117,7 +118,15 @@ GetOSEvent(
         
         case kHighLevelEvent:
             if ((AEEventClass)theEvent->message == kCoreEventClass) {
-                AEProcessAppleEvent(theEvent);
+                /*AEProcessAppleEvent(theEvent);*/
+                switch ((theEvent->where.v << 16) | theEvent->where.h) {
+                case kAEQuitApplication:
+                    /* simulate Command-Q */
+                    theEvent->what = keyDown;
+                    theEvent->message = 'Q';
+                    theEvent->modifiers = cmdKey;
+                    return true;
+                }
             }
             break;
         }
@@ -126,6 +135,7 @@ GetOSEvent(
     /* not reached */
     return false;
 }
+
 
 
 static void trapOSEventAvail(UInt16 trapWord, UInt32 regs[16])
