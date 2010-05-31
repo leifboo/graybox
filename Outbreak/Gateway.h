@@ -31,7 +31,7 @@ enum {
 
 enum {
     vGateway = 0x00600000,
-    nDrives = 2
+    nDrives = 32
 };
 
 

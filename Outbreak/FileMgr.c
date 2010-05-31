@@ -54,10 +54,12 @@ typedef struct WDRec {
     long dirID;
 } WDRec;
 
+
 static WDRec *wd;
 static short nWD;
 static short defaultVolume;
 static long defaultDirectory;
+static short mountedVolumes[nDrives];
 
 
 
@@ -76,11 +78,13 @@ static OSErr resolveWDRefNum(short *vRefNumPtr, long *dirIDPtr) {
         if (wdIndex < 0 || nWD <= wdIndex) {
             /* volume ID */
             *vRefNumPtr = vRefNum;
+            if (dirIDPtr && *dirIDPtr == 0)
+                *dirIDPtr = fsRtDirID;
             return noErr;
         }
     } else if (0 < vRefNum && vRefNum <= nDrives) {
-        /* XXX: ??? */
-        *vRefNumPtr = bootVRefNum;
+        /* drive number */
+        *vRefNumPtr = mountedVolumes[vRefNum - 1];
         return noErr;
     } else {
         fprintlog("    resolveWDRefNum: %d: no such volume\n", vRefNum);
@@ -108,7 +112,7 @@ static OSErr MountVol(ParmBlkPtr paramBlock) {
     
     drvNum = paramBlock->ioParam.ioVRefNum;
     if (0 < drvNum && drvNum <= nDrives) {
-        paramBlock->ioParam.ioVRefNum = bootVRefNum;
+        paramBlock->ioParam.ioVRefNum = mountedVolumes[drvNum - 1];
         err = noErr;
         fprintlog("    MountVol %d --> ioVRefNum %d\n",
                   drvNum, paramBlock->ioParam.ioVRefNum);
@@ -267,6 +271,9 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
         fprintlog("    ioVRefNum = %d, A1 = %lx\n",
                   parmBlkPtr->volumeParam.ioVRefNum,
                   regs[8+1]);
+    } else if (selectCode == kFSMOpen || selectCode == kFSMOpenRF) {
+        fprintlog("    ioVRefNum = %d\n",
+                  parmBlkPtr->volumeParam.ioVRefNum);
     }
     
     switch (selectCode) {
@@ -279,11 +286,18 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
                 = (Ptr)get_real_address((CPTR)ioMisc);
         }
         pb.hpb.fileParam.ioVRefNum = parmBlkPtr->fileParam.ioVRefNum;
+        pb.hpb.fileParam.ioDirID = 0;
+        fprintlog("    resolving ioVRefNum = %d, ioDirID = %d\n",
+                  pb.hpb.fileParam.ioVRefNum,
+                  pb.hpb.fileParam.ioDirID);
         err = resolveWDRefNum(&pb.hpb.fileParam.ioVRefNum,
                               &pb.hpb.fileParam.ioDirID);
         if (err != noErr)
             goto leave;
         }
+        fprintlog("    resolved ioVRefNum = %d, ioDirID = %d\n",
+                  pb.hpb.fileParam.ioVRefNum,
+                  pb.hpb.fileParam.ioDirID);
         /* fall through */
     case kFSMClose:
     case kFSMRead:
@@ -306,6 +320,7 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMGetFileInfo:
     case kFSMSetFileInfo:
         pb.hpb.fileParam.ioVRefNum = parmBlkPtr->fileParam.ioVRefNum;
+        pb.hpb.fileParam.ioDirID = 0;
         err = resolveWDRefNum(&pb.hpb.fileParam.ioVRefNum,
                               &pb.hpb.fileParam.ioDirID);
         if (err != noErr)
@@ -316,6 +331,7 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMGetVolInfo:
         pb.hpb.volumeParam.ioVRefNum = parmBlkPtr->volumeParam.ioVRefNum;
         pb.hpb.volumeParam.ioVolIndex = parmBlkPtr->volumeParam.ioVolIndex;
+        volDirID = 0;
         err = resolveWDRefNum(&pb.hpb.volumeParam.ioVRefNum, &volDirID);
         if (err != noErr)
             goto leave;
@@ -419,7 +435,8 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
             BlockMove(&pb, parmBlkPtr, sizeof(HParamBlockRec));
             parmBlkPtr->volumeParam.ioNamePtr = ioNamePtr;
             
-            if (pb.hpb.volumeParam.ioVRefNum == bootVRefNum) {
+            if (pb.hpb.volumeParam.ioVRefNum == bootVRefNum ||
+                pb.hpb.volumeParam.ioVRefNum == 1) {
                 HParmBlkPtr hParmBlkPtr = (HParmBlkPtr)parmBlkPtr;
                 int i;
                 
@@ -669,10 +686,48 @@ static void defaultToDocumentsFolder(void) {
     err = FindFolder(kUserDomain, kDocumentsFolderType, kDontCreateFolder,
                      &vRefNum, &dirID);
     if (err == noErr) {
-        *SfSaveDiskPtr = 0;
+        *SfSaveDiskPtr = -vRefNum; /* must be negated (empirically determined) */
         *CurDirStorePtr = dirID;
-        /* XXX: Where does vRefNum go? */
     }
+}
+
+
+void ScanVolumes(void) {
+    UInt32 vDrvQ; BBDrvQEl *drvQ;
+    UInt32 vVCBQ; VCB *vcbQ;
+    HParamBlockRec paramBlock;
+    int drvIndex, volIndex;
+    OSErr err;
+    
+    fprintlog("scanning for mounted volumes\n");
+    
+    BlockZero(&paramBlock, sizeof(paramBlock));
+    GetGatewayFMDataStructs(&vDrvQ, &drvQ, &vVCBQ, &vcbQ);
+    
+    /* account for the "boot" volume which contains our system folder */
+    volIndex = 0;
+    vcbQ[volIndex].vcbVRefNum = mountedVolumes[volIndex] = bootVRefNum;
+    vcbQ[volIndex].qLink = (QElemPtr)(vGateway + (Ptr)&vcbQ[volIndex+1] - gateway);
+    fprintlog("    boot volume %d in drive %d\n", bootVRefNum, volIndex + 1);
+    ++volIndex;
+    
+    for (drvIndex = 0; drvIndex < nDrives; ++drvIndex) {
+        paramBlock.volumeParam.ioVolIndex = drvIndex + 1;
+        err = PBHGetVInfoSync(&paramBlock);
+        if (err != noErr)
+            break;
+        if (paramBlock.volumeParam.ioVRefNum == bootVRefNum)
+            continue;
+        fprintlog("    volume %d in drive %d\n", paramBlock.volumeParam.ioVRefNum, drvIndex + 1);
+        vcbQ[volIndex].vcbVRefNum = mountedVolumes[volIndex] = paramBlock.volumeParam.ioVRefNum;
+        vcbQ[volIndex].qLink = (QElemPtr)(vGateway + (Ptr)&vcbQ[volIndex+1] - gateway);
+        ++volIndex;
+    }
+    
+    vcbQ[volIndex-1].qLink = 0;
+    
+    for ( ; volIndex < nDrives; ++volIndex)
+        mountedVolumes[volIndex] = 0;
 }
 
 
@@ -727,12 +782,8 @@ static void trapInitFs(UInt16 trapWord, UInt32 regs[16]) {
         BlockMove("\pvcb", &vcbQ[i].vcbVN, 4);
         vcbQ[i].vcbDrvNum = i + 1;
         vcbQ[i].vcbDRefNum = -5; /* .Sony */
-        vcbQ[i].vcbFSID = 0;
-        vcbQ[i].vcbVRefNum = 0;
     }
     vcbQ[i-1].qLink = 0;
-    
-    vcbQ[0].vcbVRefNum = bootVRefNum;
     
     /* default volume control block */
     *defVCBPtrPtr = vVCBQ;
@@ -748,6 +799,7 @@ static void trapInitFs(UInt16 trapWord, UInt32 regs[16]) {
     
     *bootDrivePtr = 1;
     
+    ScanVolumes();
     defaultToDocumentsFolder();
     
     (void)trapWord; (void)regs;

@@ -40,6 +40,7 @@
 #include "ADDRSPAC.h"
 
 #include "Display.h"
+#include "FileMgr.h"
 #include "Gateway.h"
 #include "GrayBox.h"
 #include "Patching.h"
@@ -81,12 +82,12 @@ LOCALFUNC ui5b get_word(CPTR addr)
 	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
 	
 	if (addr == 0xBAA) /* MBarHeight */ {
-        /*
-         * Make sure the classic menu bar eclipses the Carbon one.
-         * Simply writing to this low mem global only partially works:
-         * it seems to be frequently reset to 20.
-         */
-	    return GetMBarHeight();
+		/*
+		 * Make sure the classic menu bar eclipses the Carbon one.
+		 * Simply writing to this low mem global only partially works:
+		 * it seems to be frequently reset to 20.
+		 */
+		return GetMBarHeight();
 	}
 	
 	if (ba != nullpr) {
@@ -101,7 +102,7 @@ LOCALFUNC ui5b get_word(CPTR addr)
 
 LOCALFUNC ui5b get_byte(CPTR addr)
 {
-    ui5b b;
+	ui5b b;
 	ui3p m;
 	ui3p ba = regs.fBankReadAddr[bankindex(addr)];
 
@@ -121,6 +122,8 @@ LOCALFUNC ui5b get_long(CPTR addr)
 	
 	if (addr == 0x16A) /* Ticks */ {
 		return TickCount();
+	} else if (addr == 0x308 || addr == 0x356) /* DrvQHdr, VCBQHdr */ {
+		ScanVolumes();
 	}
 	
 	if (IS_DISPLAY_ACCESS(addr)) {
@@ -129,7 +132,7 @@ LOCALFUNC ui5b get_long(CPTR addr)
 	if (ba != nullpr) {
 		ui3p m = (addr & MemBankAddrMask) + ba;
 		ui5b l = do_get_mem_long(m);
-    	return l;
+		return l;
 	} else {
 		ui4b hi = get_word(addr);
 		ui4b lo = get_word(addr+2);

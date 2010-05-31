@@ -20,6 +20,7 @@
 
 
 Boolean InitFiles(void);
+void ScanVolumes(void);
 
 
 #endif /* __FileMgr_h__ */
