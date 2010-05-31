@@ -249,7 +249,7 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     
     BlockZero(&pb, sizeof(pb));
     /* XXX: for now */
-    BlockMove(parmBlkPtr, &pb, sizeof(ParamBlockRec));
+    BlockMove(parmBlkPtr, &pb, hfs ? sizeof(HParamBlockRec) : sizeof(ParamBlockRec));
     
     ioNamePtr = parmBlkPtr->ioParam.ioNamePtr;
     if (ioNamePtr) {
@@ -261,10 +261,11 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
         short *BootDrivePtr = (short *)get_real_address(0x210);
         short *SfSaveDiskPtr = (short *)get_real_address(0x214);
         long *CurDirStorePtr = (long *)get_real_address(0x398);
+        short *DefVRefNumPtr = (short *)get_real_address(0x384);
         fprintlog("    GetVolInfo ioVolIndex = %d, ioVRefNum = %d\n",
                   parmBlkPtr->volumeParam.ioVolIndex, parmBlkPtr->volumeParam.ioVRefNum);
-        fprintlog("    (BootDrive = %d, SfSaveDisk = %d, CurDirStore = %ld)\n",
-                  *BootDrivePtr, *SfSaveDiskPtr, *CurDirStorePtr);
+        fprintlog("    (BootDrive = %d, SfSaveDisk = %d, CurDirStore = %ld, DefVRefNum = %d)\n",
+                  *BootDrivePtr, *SfSaveDiskPtr, *CurDirStorePtr, *DefVRefNumPtr);
         fprintlog("    (bootVRefNum,sysDirID = %d,%d)\n",
                   bootVRefNum, sysDirID);
     } else if (selectCode == kFSMUnmountVol) {
@@ -285,8 +286,10 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
             pb.hpb.ioParam.ioMisc
                 = (Ptr)get_real_address((CPTR)ioMisc);
         }
-        pb.hpb.fileParam.ioVRefNum = parmBlkPtr->fileParam.ioVRefNum;
-        pb.hpb.fileParam.ioDirID = 0;
+        if (!hfs) {
+            pb.hpb.fileParam.ioVRefNum = parmBlkPtr->fileParam.ioVRefNum;
+            pb.hpb.fileParam.ioDirID = 0;
+        }
         fprintlog("    resolving ioVRefNum = %d, ioDirID = %d\n",
                   pb.hpb.fileParam.ioVRefNum,
                   pb.hpb.fileParam.ioDirID);
@@ -319,8 +322,10 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMDelete:
     case kFSMGetFileInfo:
     case kFSMSetFileInfo:
-        pb.hpb.fileParam.ioVRefNum = parmBlkPtr->fileParam.ioVRefNum;
-        pb.hpb.fileParam.ioDirID = 0;
+        if (!hfs) {
+            pb.hpb.fileParam.ioVRefNum = parmBlkPtr->fileParam.ioVRefNum;
+            pb.hpb.fileParam.ioDirID = 0;
+        }
         err = resolveWDRefNum(&pb.hpb.fileParam.ioVRefNum,
                               &pb.hpb.fileParam.ioDirID);
         if (err != noErr)
@@ -410,7 +415,7 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMGetFileInfo:
         if (hfs) {
             StringPtr ioNamePtr = parmBlkPtr->fileParam.ioNamePtr;
-            BlockMove(&pb, parmBlkPtr, sizeof(HParamBlockRec));
+            BlockMove(&pb, parmBlkPtr, sizeof(HFileParam));
             parmBlkPtr->fileParam.ioNamePtr = ioNamePtr;
         } else {
             parmBlkPtr->fileParam.ioFRefNum = pb.hpb.fileParam.ioFRefNum;
@@ -432,7 +437,7 @@ static void trapFMRoutine(UInt16 trapWord, UInt32 regs[16]) {
     case kFSMGetVolInfo:
         if (hfs) {
             StringPtr ioNamePtr = parmBlkPtr->volumeParam.ioNamePtr;
-            BlockMove(&pb, parmBlkPtr, sizeof(HParamBlockRec));
+            BlockMove(&pb, parmBlkPtr, sizeof(HVolumeParam));
             parmBlkPtr->volumeParam.ioNamePtr = ioNamePtr;
             
             if (pb.hpb.volumeParam.ioVRefNum == bootVRefNum ||
@@ -636,15 +641,26 @@ static void trapHFSDispatch(UInt16 trapWord, UInt32 regs[16]) {
                   wdPBPtr->ioWDProcID
                   );
         /* XXX: just handle the common case */
-        wdPBPtr->ioWDVRefNum = wdPBPtr->ioVRefNum;
-        err = resolveWDRefNum(&wdPBPtr->ioWDVRefNum, &wdPBPtr->ioWDDirID);
-        fprintlog("        err = %d; %d:%d\n", err, wdPBPtr->ioWDVRefNum, wdPBPtr->ioWDDirID);
+        if (wdPBPtr->ioVRefNum < 0) {
+            short wdIndex = wdPBPtr->ioVRefNum - wdMagic;
+            if (0 <= wdIndex && wdIndex < nWD) {
+                wdPBPtr->ioWDVRefNum = wdPBPtr->ioVRefNum;
+                err = resolveWDRefNum(&wdPBPtr->ioWDVRefNum, &wdPBPtr->ioWDDirID);
+                fprintlog("        err = %d; %d:%d\n", err, wdPBPtr->ioWDVRefNum, wdPBPtr->ioWDDirID);
+            } else {
+                err = nsvErr; /* XXX: HyperCard strangeness */
+            }
+        } else {
+            err = nsvErr; /* XXX: HyperCard strangeness */
+        }
         break;
     
     case kFSMGetFCBInfo:
         fprintlog("    @@@ kFSMGetFCBInfo\n");
         err = PBGetFCBInfoSync(fcbPBPtr);
         if (err == noErr) {
+            fprintlog("        ioVRefNum = %d, ioFCBVRefNum = %d\n",
+                      fcbPBPtr->ioVRefNum, fcbPBPtr->ioFCBVRefNum);
             /* XXX: for now */
             BlockMove(fcbPBPtr, parmBlkPtr, sizeof(FCBPBRec));
         }
